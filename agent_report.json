@@ -1,0 +1,73 @@
+{
+  "user_profile": {
+    "risk_score": 42.07,
+    "personality": "波段型",
+    "favorite_coin": "SOL",
+    "total_records": 10000
+  },
+  "behavior_agent": {
+    "trading_style": "波段型",
+    "favorite_coin": "SOL",
+    "activity_level": "High"
+  },
+  "technical_agent": {
+    "coin": "SOL",
+    "rsi": 48.01,
+    "ma5": 2426.32,
+    "ma20": 2432.16,
+    "signal": "HOLD"
+  },
+  "risk_agent": {
+    "risk_score": 42.07,
+    "risk_level": "Medium",
+    "cash_ratio": 98.6
+  },
+  "sentiment_agent": {
+    "sentiment_score": 50,
+    "sentiment": "Neutral",
+    "source": "CoinMarketCap",
+    "change_24h": 0.1,
+    "fear_greed": 34,
+    "fear_greed_classification": "Fear"
+  },
+  "investment_committee": {
+    "technical_score": 48,
+    "sentiment_score": 50,
+    "risk_score": 42.07,
+    "behavior_score": 60,
+    "committee_score": 49.61,
+    "final_action": "HOLD"
+  },
+  "recommendation": {
+    "action": "HOLD",
+    "confidence": 50,
+    "summary": "SOL RSI 48.01 市場情緒 Neutral 投資委員會建議 HOLD"
+  },
+  "market_agent": {
+    "coin": "SOL",
+    "rank": 7,
+    "price_usd": 74.76,
+    "market_cap": 43550478892,
+    "volume_24h": 1306997836,
+    "change_24h": 0.1
+  },
+  "updated_time": "2026-07-18 18:22:54",
+  "llm_input": {
+    "personality": "波段型",
+    "favorite_coin": "SOL",
+    "market_rank": 7,
+    "price_usd": 74.76,
+    "risk_score": 42.07,
+    "rsi": 48.01,
+    "ma5": 2426.32,
+    "ma20": 2432.16,
+    "signal": "HOLD",
+    "change_24h": 0.1,
+    "fear_greed": 34,
+    "fear_greed_classification": "Fear",
+    "sentiment": "Neutral",
+    "committee_score": 49.61,
+    "final_action": "HOLD",
+    "updated_time": "2026-07-18 18:22:54"
+  }
+}
