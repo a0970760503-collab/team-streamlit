@@ -1,3 +1,5 @@
+setwd("C:/Users/a0970/OneDrive/桌面/黑客松")
+
 library(httr)
 library(jsonlite)
 library(TTR)
@@ -210,6 +212,72 @@ agent_report <- read_json(
   simplifyVector = TRUE
 )
 
+trade <- read.csv(
+  "MaiCoin_最近一年份出入金及交易紀錄.csv"
+)
+
+trade_coin <- subset(
+  trade,
+  action %in% c("buy","sell")
+)
+
+favorite_coin <- names(
+  sort(
+    table(trade_coin$currency),
+    decreasing = TRUE
+  )
+)[1]
+
+print(favorite_coin)
+
+trade_count <- nrow(trade_coin)
+
+print(trade_count)
+
+if(trade_count >= 3000){
+
+  personality <- "高頻交易型"
+
+}else if(trade_count >= 1000){
+
+  personality <- "短線型"
+
+}else if(trade_count >= 300){
+
+  personality <- "波段型"
+
+}else{
+
+  personality <- "保守型"
+
+}
+
+if(personality == "保守型"){
+
+  risk_score <- 30
+
+}else if(personality == "波段型"){
+
+  risk_score <- 60
+
+}else if(personality == "短線型"){
+
+  risk_score <- 80
+
+}else{
+
+  risk_score <- 90
+
+}
+
+print(risk_score)
+
+print(personality)
+
+agent_report <- agent_report[
+  !names(agent_report) %in% c("1","2","3","4")
+]
+
 # 更新
 agent_report$market_agent <- market_agent
 agent_report$sentiment_agent <- sentiment_agent
@@ -217,12 +285,6 @@ agent_report$sentiment_agent <- sentiment_agent
 # Technical Score
 
 technical_score <- round(latest_rsi)
-
-# 固定分數
-
-risk_agent_score <- 42.07
-
-behavior_agent_score <- 60
 
 # Sentiment Score
 
@@ -236,21 +298,44 @@ committee_score <-
   risk_agent_score * 0.2 +
   behavior_agent_score * 0.2
 
+  ## Chairman Input
+
+chairman_input <- list(
+
+  technical_agent = list(
+    score = technical_score,
+    rsi = round(latest_rsi,2),
+    ma5 = round(latest_ma5,2),
+    ma20 = round(latest_ma20,2),
+    signal = signal
+  ),
+
+  sentiment_agent = list(
+    score = sentiment_agent_score,
+    sentiment = sentiment,
+    fear_greed = fear_greed
+  ),
+
+  risk_agent = list(
+    score = risk_agent_score
+  ),
+
+  behavior_agent = list(
+    score = behavior_agent_score
+  ),
+
+  committee_score = round(committee_score,2)
+)
+
 # Final Action
+# if(committee_score >= 70){
+#   final_action <- "BUY"
+# } else if(committee_score <= 40){
+#   final_action <- "SELL"
+# } else {
+#   final_action <- "HOLD"
+# }
 
-if(committee_score >= 70){
-
-  final_action <- "BUY"
-
-} else if(committee_score <= 40){
-
-  final_action <- "SELL"
-
-} else {
-
-  final_action <- "HOLD"
-
-}
 
 # 更新 Technical Agent
 
@@ -270,27 +355,36 @@ agent_report$technical_agent <- list(
 
 # 更新 Investment Committee
 
+
 agent_report$investment_committee <- list(
-
   technical_score = technical_score,
-
   sentiment_score = sentiment_agent_score,
-
   risk_score = risk_agent_score,
-
   behavior_score = behavior_agent_score,
+  committee_score = round(committee_score,2)
+)
 
-  committee_score = round(committee_score,2),
+agent_report$chairman_input <- chairman_input
 
-  final_action = final_action
+agent_report$user_profile <- list(
+  personality = personality,
+  favorite_coin = favorite_coin,
+  risk_score = risk_score
+)
 
+agent_report$chairman_prompt <- paste(
+  "你是AI投資委員會主席。",
+  "請根據以下Agent分析結果做出最終投資決策。",
+  "Technical Score:", technical_score,
+  "Sentiment Score:", sentiment_agent_score,
+  "Risk Score:", risk_agent_score,
+  "Behavior Score:", behavior_agent_score,
+  "Committee Score:", round(committee_score,2)
 )
 
 # 更新 Recommendation
 
 agent_report$recommendation <- list(
-
-  action = final_action,
 
   confidence = round(committee_score,0),
 
@@ -300,8 +394,8 @@ agent_report$recommendation <- list(
       round(latest_rsi,2),
       "市場情緒",
       sentiment,
-      "投資委員會建議",
-      final_action
+      "Committee Score",
+      round(committee_score,2)
     )
 
 )
@@ -309,10 +403,10 @@ agent_report$recommendation <- list(
 agent_report$llm_input <- list(
 
   personality =
-    agent_report$user_profile$personality,
+    personality,
 
   favorite_coin =
-    agent_report$user_profile$favorite_coin,
+    favorite_coin,
 
   market_rank =
     market_agent$rank,
@@ -321,8 +415,8 @@ agent_report$llm_input <- list(
     market_agent$price_usd,
 
   risk_score =
-    agent_report$risk_agent$risk_score,
-
+    risk_score,
+  
   rsi =
     round(latest_rsi,2),
 
@@ -349,9 +443,6 @@ agent_report$llm_input <- list(
 
   committee_score =
     round(committee_score,2),
-
-  final_action =
-    final_action,
 
   updated_time =
     format(
