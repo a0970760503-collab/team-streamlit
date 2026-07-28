@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 投資委員會 - 完整辯論流程</title>
+    <style>
+        :root {
+            --bg-base: #09090b;
+            --bg-panel: #18181b;
+            --bg-chat: #27272a;
+            --primary: #00f0ff;
+            --secondary: #7000ff;
+            --success: #39ff14;
+            --danger: #ff003c;
+            --warning: #ffd700;
+            --text-main: #f8fafc;
+            --text-muted: #a1a1aa;
+        }
+        * { box-sizing: border-box; font-family: 'Segoe UI', 'Microsoft JhengHei', Tahoma, sans-serif; }
+        
+        /* 居中虛擬手機外框背景 */
+        body {
+            margin: 0;
+            background-color: #030303;
+            color: var(--text-main);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* 手機外框 Mockup */
+        .phone-frame {
+            width: 414px;
+            height: 850px;
+            max-height: 100vh;
+            background-color: #000;
+            border: 12px solid #1e1e24;
+            border-radius: 40px;
+            box-shadow: 0 25px 60px rgba(112, 0, 255, 0.25), 0 0 0 2px rgba(255,255,255,0.05);
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+        
+        /* 手機版看盤背景 (底層) */
+        .phone-dashboard {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        /* 看盤首頁行情列表項樣式 */
+        .market-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 16px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .market-row:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(0, 240, 255, 0.2);
+            transform: scale(1.01);
+        }
+        .market-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+            min-width: 65px;
+            text-align: center;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+        }
+        .badge-up {
+            background: rgba(57, 255, 20, 0.08);
+            color: var(--success);
+            border: 1px solid var(--success);
+            box-shadow: 0 0 8px rgba(57, 255, 20, 0.2);
+        }
+        .badge-down {
+            background: rgba(255, 0, 60, 0.08);
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            box-shadow: 0 0 8px rgba(255, 0, 60, 0.2);
+        }
+
+        /* 懸浮彈出式 AI 助理控制面板 (定位於手機框內部) */
+        .app-container {
+            width: calc(100% - 24px);
+            left: 12px;
+            height: 700px;
+            max-height: 82vh;
+            background: linear-gradient(180deg, #09090b 0%, #111 100%);
+            position: absolute;
+            bottom: 90px;
+            box-shadow: 0 10px 40px rgba(112, 0, 255, 0.4), 0 0 20px rgba(0, 240, 255, 0.2);
+            display: flex;
+            flex-direction: column;
+            border: 1px solid rgba(0, 240, 255, 0.25);
+            border-radius: 20px;
+            z-index: 1000;
+            overflow: hidden;
+            
+            /* 進退場動畫與過渡效果 */
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            transform: translateY(30px) scale(0.95);
+            opacity: 0;
+            pointer-events: none;
+        }
+        /* 面板展開狀態 */
+        .app-container.open {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            pointer-events: auto;
+        }
+
+        /* 懸浮聊天按鈕 (定位於手機框內部) */
+        #floating-chat-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--secondary), var(--primary));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(112, 0, 255, 0.4), 0 0 10px rgba(0, 240, 255, 0.4);
+            z-index: 1001;
+            font-size: 26px;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            user-select: none;
+        }
+        #floating-chat-btn:hover {
+            transform: scale(1.1) rotate(10deg);
+            box-shadow: 0 6px 24px rgba(112, 0, 255, 0.5), 0 0 15px rgba(0, 240, 255, 0.6);
+        }
+
+        .navbar { padding: 16px 20px; background: rgba(24, 24, 27, 0.9); border-bottom: 1px solid rgba(0, 240, 255, 0.2); display: flex; justify-content: space-between; align-items: center; z-index: 10; flex-shrink: 0; }
+        .navbar h1 { margin: 0; font-size: 16px; color: #fff; text-shadow: 0 0 5px var(--primary); font-family: 'Segoe UI', sans-serif;}
+        .pulse-dot { width: 8px; height: 8px; background: var(--danger); border-radius: 50%; box-shadow: 0 0 8px var(--danger); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+
+        .page { display: none; height: 100%; flex-direction: column; overflow-y: auto; padding: 20px; }
+        .page.active { display: flex; animation: slideIn 0.3s ease forwards; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .glow-btn { background: linear-gradient(90deg, var(--secondary), var(--primary)); color: #fff; border: none; padding: 16px; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; margin-top: auto; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3); transition: 0.3s; flex-shrink: 0; letter-spacing: 1px;}
+        .glow-btn:hover { filter: brightness(1.2); }
+
+        /* Page 1: AI Chatbot Assistant Styles */
+        .chat-input-area input {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(0, 240, 255, 0.2);
+            background: rgba(0, 0, 0, 0.6);
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+            transition: 0.3s;
+        }
+        .chat-input-area input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+        }
+        .chat-input-area button {
+            background: linear-gradient(90deg, var(--secondary), var(--primary));
+            border: none;
+            border-radius: 8px;
+            padding: 10px 24px;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+            font-size: 14px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .chat-input-area button:hover {
+            filter: brightness(1.2);
+        }
+        
+        /* 霓虹滑桿開關 (Toggle Switch) */
+        .switch-container {
+            width: 46px;
+            height: 24px;
+            background-color: #18181b;
+            border: 1px solid #333;
+            border-radius: 12px;
+            position: relative;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+            cursor: pointer;
+        }
+        .switch-handle {
+            width: 18px;
+            height: 18px;
+            background-color: var(--text-muted);
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        /* 啟用/發光狀態 (active-neon) */
+        .switch-container.active-neon {
+            background-color: rgba(0, 240, 255, 0.1);
+            border-color: var(--primary);
+            box-shadow: 0 0 15px var(--primary), inset 0 0 10px rgba(0, 240, 255, 0.2);
+        }
+        .switch-container.active-neon .switch-handle {
+            background-color: #fff;
+            left: 24px;
+            box-shadow: 0 0 8px #fff;
+        }
+        
+        /* 點亮文字 */
+        .switch-label-active {
+            color: #fff !important;
+            text-shadow: 0 0 5px var(--primary);
+            transition: all 0.3s ease;
+        }
+
+        /* Page 2 Styles */
+        .cyber-header { text-align: center; margin-bottom: 20px; }
+        .cyber-header h2 { font-size: 20px; margin: 0 0 5px; color: var(--primary); font-family: monospace; letter-spacing: 1px;}
+        
+        /* 全新 SVG 雷達圖設計 */
+        .radar-wrapper { position: relative; width: 240px; height: 240px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; }
+        .radar-svg { width: 100%; height: 100%; filter: drop-shadow(0 0 10px rgba(0,240,255,0.3)); }
+        .radar-label { position: absolute; font-size: 11px; font-weight: bold; letter-spacing: 1px; }
+        .lbl-risk { top: -5px; left: 50%; transform: translateX(-50%); color: var(--danger); }
+        .lbl-fomo { top: 35%; right: -15px; color: var(--warning); }
+        .lbl-freq { bottom: 0px; right: 10px; color: var(--primary); }
+        .lbl-disc { bottom: 0px; left: 10px; color: var(--success); }
+        .lbl-win { top: 35%; left: -15px; color: var(--secondary); }
+
+        .tags { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-bottom: 20px; }
+        .tag { background: rgba(0, 240, 255, 0.1); color: var(--primary); padding: 6px 12px; border-radius: 20px; font-size: 13px; border: 1px solid rgba(0, 240, 255, 0.3); font-weight: bold;}
+        .cyber-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 20px;}
+        .cyber-stat-box { background: rgba(0,0,0,0.5); border-left: 3px solid var(--primary); padding: 12px; }
+        .cyber-stat-box .val { font-size: 18px; font-weight: bold; font-family: monospace; }
+        .cyber-stat-box .lbl { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+        /* Page 3 Chat Styles */
+        .chat-container { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-bottom: 100px; scroll-behavior: smooth; }
+        .sys-msg { text-align: center; margin: 10px 0; }
+        .sys-msg span { background: rgba(255, 0, 60, 0.15); color: var(--danger); padding: 6px 12px; border-radius: 12px; font-size: 12px; border: 1px solid rgba(255,0,60,0.4); font-weight: bold; line-height: 1.5; display: inline-block;}
+        .msg-block { display: flex; gap: 12px; opacity: 0; animation: fadeInMsg 0.4s ease forwards; }
+        @keyframes fadeInMsg { to { opacity: 1; transform: translateY(0); } from { opacity: 0; transform: translateY(10px); } }
+        .avatar { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+        .avatar.tech { background: rgba(0, 240, 255, 0.2); border: 1px solid var(--primary); }
+        .avatar.sent { background: rgba(255, 0, 60, 0.2); border: 1px solid var(--danger); }
+        .avatar.risk { background: rgba(255, 215, 0, 0.2); border: 1px solid var(--warning); }
+        .avatar.behav { background: rgba(112, 0, 255, 0.2); border: 1px solid var(--secondary); }
+        .avatar.chair { background: linear-gradient(135deg, var(--primary), var(--secondary)); }
+        .msg-content { flex: 1; }
+        .msg-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+        .agent-name { font-weight: 600; font-size: 13px; }
+        .msg-bubble { background: var(--bg-chat); padding: 12px; border-radius: 0 12px 12px 12px; font-size: 14px; line-height: 1.6; color: #e2e8f0; border: 1px solid rgba(255,255,255,0.05); }
+        .msg-bubble b { color: #fff; }
+        .typing-indicator { display: flex; gap: 4px; padding: 12px; background: var(--bg-chat); border-radius: 0 12px 12px 12px; width: fit-content; }
+        .typing-indicator span { width: 6px; height: 6px; background: var(--text-muted); border-radius: 50%; animation: bounce 1.4s infinite ease-in-out both; }
+        .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+        .decision-btn-container { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px; background: linear-gradient(0deg, #09090b 70%, transparent); display: none; z-index: 5;}
+
+        /* Page 4: Voting Results Styles */
+        .vote-circle { width: 160px; height: 160px; border-radius: 50%; border: 4px solid var(--warning); margin: 0 auto 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(255,215,0,0.2); }
+        .vote-result { font-size: 36px; font-weight: bold; color: var(--warning); text-shadow: 0 0 10px var(--warning); }
+        .weight-list { background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px; }
+        .weight-item { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px; font-weight: bold;}
+        .weight-bar-bg { width: 100%; height: 6px; background: #333; border-radius: 3px; margin-top: 4px; margin-bottom: 12px;}
+        .weight-bar-fill { height: 100%; border-radius: 3px; }
+
+        /* Page 5: Strategy Styles */
+        .pie-placeholder { width: 180px; height: 180px; border-radius: 50%; margin: 0 auto 24px; background: conic-gradient(#333 0% 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(255,255,255,0.05); }
+        .pie-inner { width: 120px; height: 120px; border-radius: 50%; background: var(--bg-base); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-weight:bold;}
+        .allocation-list { background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.05); }
+        .alloc-item { display: flex; align-items: center; margin-bottom: 12px; font-size: 15px; font-weight:bold;}
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 12px; }
+
+        /* Page 6: Execution Styles */
+        .order-summary { background: rgba(255,255,255,0.03); padding: 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.05); font-size: 15px; margin-bottom: 20px; }
+        .order-row { display: flex; justify-content: space-between; padding: 14px 0; border-bottom: 1px solid #333; }
+        .order-row:last-child { border: none; }
+        .swipe-btn { background: #333; border: 1px solid var(--primary); color: var(--primary); box-shadow: none; }
+        .success-overlay { position: absolute; inset: 0; background: rgba(9,9,11,0.95); backdrop-filter: blur(5px); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 20; }
+        .success-icon { font-size: 64px; color: var(--success); margin-bottom: 16px; animation: scaleUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes scaleUp { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+<!-- 手機外框 Mockup -->
+<div class="phone-frame">
+    <!-- 手機版看盤背景 (底層) -->
+    <div class="phone-dashboard">
+        
+        <!-- 1. 行情首頁視圖 (Dashboard Home View) -->
+        <div id="dashboard-home-view" style="display: flex; flex-direction: column; width: 100%; height: 100%; overflow: hidden; background: #030303;">
+            <!-- 首頁 Header -->
+            <div style="padding: 16px; border-bottom: 1px solid rgba(0,240,255,0.15); display:flex; justify-content:space-between; align-items:center; background:#000;">
+                <span style="color:var(--primary); font-weight:bold; font-size:16px; letter-spacing:1px; text-shadow:0 0 5px var(--primary);">📊 市場行情</span>
+                <!-- 綜合搜尋框 -->
+                <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:120px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
+            </div>
+            
+            <!-- 行情自選列表區 -->
+            <div id="market-list-container" style="flex: 1.4; padding: 16px 16px 8px; overflow-y: auto; display:flex; flex-direction:column;">
+                <div style="text-align:center; color:var(--text-muted); padding-top:20px; font-size:12px;">載入即時報價中...</div>
+            </div>
+            
+            <!-- 綜合快訊區 -->
+            <div style="flex: 1; padding: 8px 16px 16px; border-top: 1px solid rgba(255,255,255,0.03); overflow: hidden; display:flex; flex-direction:column; background:#09090b;">
+                <div style="color: var(--warning); font-weight: bold; font-size: 11px; margin-bottom: 8px; letter-spacing: 0.5px; display:flex; justify-content:space-between; align-items:center;">
+                    <span>📰 綜合快訊</span>
+                    <span style="width:6px; height:6px; background:var(--success); border-radius:50%; box-shadow:0 0 5px var(--success);"></span>
+                </div>
+                <div id="home-news-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 10px; line-height: 1.3;">
+                    <!-- 由 JS 動態產生綜合新聞 -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 商品詳細圖表視圖 (Dashboard Chart View, 預設隱藏) -->
+        <div id="dashboard-chart-view" style="display: none; flex-direction: column; width: 100%; height: 100%; overflow: hidden; background: #000;">
+            <!-- 自研賽博龐克風格 K 線圖 -->
+            <div style="width: 100%; height: 380px; flex-shrink: 0; background: #000; border-bottom: 1px solid rgba(0, 240, 255, 0.15); display: flex; flex-direction: column; padding: 12px 16px;">
+                <!-- K 線數值資訊列與搜尋商品區 -->
+                <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px; font-family:monospace;">
+                    <!-- 第一列：返回按鈕、商品名稱與搜尋框、常用切換 -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                        <div style="display:flex; gap:10px; align-items:center;">
+                            <!-- 返回行情首頁按鈕 -->
+                            <span style="color:var(--text-muted); font-weight:bold; font-size:12.5px; cursor:pointer; user-select:none; transition:0.2s;" onclick="showDashboardHomeView()" onmouseover="this.style.color='var(--primary)'" onmouseout="this.style.color='var(--text-muted)'">⬅ 返回</span>
+                            <span style="color:var(--primary); font-weight:bold; font-size:13px;" id="kline-market-title">BTC/USDT</span>
+                        </div>
+                        <div style="display:flex; gap:4px; align-items:center; flex-shrink:0;">
+                            <!-- 常用熱門代幣按鈕 -->
+                            <span style="font-size:9px; padding:1px 4px; background:rgba(0,240,255,0.08); border:1px solid rgba(0,240,255,0.3); border-radius:3px; cursor:pointer; color:var(--primary); user-select:none;" onclick="changeMarket('btcusdt')">BTC</span>
+                            <span style="font-size:9px; padding:1px 4px; background:rgba(112,0,255,0.08); border:1px solid rgba(112,0,255,0.3); border-radius:3px; cursor:pointer; color:#b070ff; user-select:none;" onclick="changeMarket('ethusdt')">ETH</span>
+                            <span style="font-size:9px; padding:1px 4px; background:rgba(255,215,0,0.08); border:1px solid rgba(255,215,0,0.3); border-radius:3px; cursor:pointer; color:var(--warning); user-select:none;" onclick="changeMarket('dogeusdt')">DOGE</span>
+                            <!-- 搜尋框 -->
+                            <input type="text" id="market-search" placeholder="搜尋..." style="width:52px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:9px; padding:2px 4px; border-radius:3px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') changeMarket(this.value)">
+                        </div>
+                    </div>
+                    <!-- 第二列：最新成交價與最高/最低價 -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                        <span id="kline-last-price" style="color:var(--success); font-weight:bold;">--</span>
+                        <div style="color:var(--text-muted); font-size:9.5px; display:flex; gap:6px;">
+                            <span>高: <span id="kline-high" style="color:#fff">--</span></span>
+                            <span>低: <span id="kline-low" style="color:#fff">--</span></span>
+                        </div>
+                    </div>
+                </div>
+                <!-- SVG K 線圖畫布區 -->
+                <div style="flex: 1; position: relative;" id="kline-canvas-container">
+                    <svg id="kline-svg" width="100%" height="100%" style="overflow: visible;"></svg>
+                </div>
+            </div>
+            
+            <!-- 手機版盤口與快訊 -->
+            <div style="flex: 1; display: flex; gap: 10px; padding: 12px; background: #09090b; overflow: hidden;">
+                <!-- 盤口 (Order Book) -->
+                <div style="flex: 1.2; display: flex; flex-direction: column; font-family: monospace; font-size: 11px; justify-content: space-between; border-right: 1px solid rgba(255,255,255,0.05); padding-right: 8px;">
+                    <div style="color: var(--primary); font-weight: bold; font-size: 11px; margin-bottom: 6px; letter-spacing: 0.5px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>📊 盤口委託</span>
+                        <span style="font-size:9px; color:var(--text-muted);" id="order-book-market-title">BTC/USDT</span>
+                    </div>
+                    <div id="phone-asks" style="display:flex; flex-direction:column; gap:3px;">
+                        <!-- 由 MAX API 動態更新 -->
+                    </div>
+                    <div style="text-align:center; font-weight:bold; font-size:12px; padding:4px 0; border-top:1px solid rgba(255,255,255,0.05); border-bottom:1px solid rgba(255,255,255,0.05); color:#fff;" id="phone-mid-price">
+                        --
+                    </div>
+                    <div id="phone-bids" style="display:flex; flex-direction:column; gap:3px;">
+                        <!-- 由 MAX API 動態更新 -->
+                    </div>
+                </div>
+                <!-- 新聞快訊 (手機版商品專屬) -->
+                <div style="flex: 1.5; display: flex; flex-direction: column; overflow: hidden;">
+                    <div style="color: var(--warning); font-weight: bold; font-size: 11px; margin-bottom: 6px; letter-spacing: 0.5px;">📰 即時快訊</div>
+                    <div id="phone-news-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 10px; line-height: 1.3;">
+                        <!-- 由 JS 隨商品動態生成 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    
+    <!-- 懸浮彈出式 AI 助理控制面板 (定位於手機框內部) -->
+    <div class="app-container">
+        <div class="navbar">
+            <h1>[ MAX ] AI 投資委員會</h1>
+            <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:11px; color:var(--text-muted); font-weight:bold;" id="nav-status">待命狀態</span>
+                <div class="pulse-dot" id="nav-dot" style="background:var(--success); box-shadow: 0 0 8px var(--success);"></div>
+            </div>
+        </div>
+
+        <!-- PAGE 1: AI 助理聊天室 (全新首頁) -->
+        <div id="page1" class="page active" style="padding: 16px 20px 80px; position: relative; height: 100%; justify-content: flex-end;">
+            <div class="cyber-header" style="margin-top: 10px; margin-bottom: 10px; flex-shrink: 0;">
+                <h2>> AI 投資助理</h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin:0;">即時一般問答 / ⚡召開委員會深度分析</p>
+            </div>
+            
+            <!-- 對話區 -->
+            <div class="chat-container" id="assistant-chat-box" style="flex: 1; margin-bottom: 20px; padding-bottom: 0;">
+                <div class="msg-block">
+                    <div class="avatar tech" style="background: rgba(0, 240, 255, 0.2); border: 1px solid var(--primary);">🤖</div>
+                    <div class="msg-content">
+                        <div class="msg-header"><span class="agent-name" style="color:var(--primary)">AI 投資助理</span></div>
+                        <div class="msg-bubble">您好，我是您的專屬投資助理。有什麼我可以幫忙的嗎？</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 底部輸入與控制區 -->
+            <div class="chat-input-area" style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; width: 100%; margin-bottom: 10px;">
+                <!-- 輸入框 -->
+                <input type="text" id="assistant-input" placeholder="輸入您的問題..." onkeydown="if(event.key==='Enter') sendAssistantMsg()">
+                
+                <!-- 底部控制欄：左邊是滑桿開關，右邊是送出按鈕 -->
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 4px;">
+                    <!-- 滑桿切換區 -->
+                    <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;" onclick="toggleCommitteeMode()">
+                        <span id="committee-switch-label" style="font-size: 13px; color: var(--text-muted); font-weight: bold; transition: all 0.3s ease; user-select: none;">⚡ 召開委員會</span>
+                        <div class="switch-container" id="committee-switch">
+                            <div class="switch-handle"></div>
+                        </div>
+                    </div>
+                    <!-- 送出按鈕 -->
+                    <button onclick="sendAssistantMsg()">送出</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE 2: 投資人格分析 -->
+        <div id="page2" class="page">
+            <div class="cyber-header">
+                <h2>> 讀取用戶投資基因</h2>
+                <p style="font-size: 13px; color: var(--text-muted); margin:0;">正在解析過去 1 年 MAX 交易紀錄...</p>
+            </div>
+            
+            <!-- 全新 SVG 專業雷達圖 -->
+            <div class="radar-wrapper">
+                <span class="radar-label lbl-risk">風險偏好</span>
+                <span class="radar-label lbl-fomo">FOMO</span>
+                <span class="radar-label lbl-freq">交易頻率</span>
+                <span class="radar-label lbl-disc">紀律性</span>
+                <span class="radar-label lbl-win">勝率表現</span>
+                <svg class="radar-svg" viewBox="0 0 200 200">
+                    <polygon points="100,20 176,75 147,165 53,165 24,75" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1"/>
+                    <polygon points="100,40 157,81 135,149 65,149 43,81" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1"/>
+                    <polygon points="100,60 138,88 124,132 76,132 62,88" fill="none" stroke="rgba(0, 240, 255, 0.2)" stroke-width="1"/>
+                    <line x1="100" y1="100" x2="100" y2="20" stroke="rgba(0, 240, 255, 0.3)" stroke-width="1"/>
+                    <line x1="100" y1="100" x2="176" y2="75" stroke="rgba(0, 240, 255, 0.3)" stroke-width="1"/>
+                    <line x1="100" y1="100" x2="147" y2="165" stroke="rgba(0, 240, 255, 0.3)" stroke-width="1"/>
+                    <line x1="100" y1="100" x2="53" y2="165" stroke="rgba(0, 240, 255, 0.3)" stroke-width="1"/>
+                    <line x1="100" y1="100" x2="24" y2="75" stroke="rgba(0, 240, 255, 0.3)" stroke-width="1"/>
+                    <polygon points="100,30 168,78 135,149 85,115 50,85" fill="rgba(112, 0, 255, 0.4)" stroke="var(--primary)" stroke-width="2"/>
+                    <circle cx="100" cy="30" r="4" fill="var(--primary)"/>
+                    <circle cx="168" cy="78" r="4" fill="var(--primary)"/>
+                    <circle cx="135" cy="149" r="4" fill="var(--primary)"/>
+                    <circle cx="85" cy="115" r="4" fill="var(--primary)"/>
+                    <circle cx="50" cy="85" r="4" fill="var(--primary)"/>
+                </svg>
+            </div>
+
+            <div class="tags">
+                <span class="tag">激進波段型投資者</span>
+                <span class="tag" style="border-color:var(--danger); color:var(--danger)">⚠️ 極易受 Tilt (心態崩潰) 影響</span>
+            </div>
+            <div class="cyber-stats">
+                <div class="cyber-stat-box"><div class="val" style="color:var(--success)">+124%</div><div class="lbl">歷史總損益</div></div>
+                <div class="cyber-stat-box"><div class="val">58%</div><div class="lbl">平均勝率</div></div>
+                <div class="cyber-stat-box"><div class="val" style="color:var(--danger)">-15%</div><div class="lbl">最大資金回撤</div></div>
+                <div class="cyber-stat-box"><div class="val">4.2 天</div><div class="lbl">平均持倉時間</div></div>
+            </div>
+            <button class="glow-btn" onclick="startDebate()">啟動 AI 投資委員會 ❯</button>
+        </div>
+
+        <!-- PAGE 3: 動態辯論會議室 -->
+        <div id="page3" class="page" style="padding: 12px 20px; position: relative;">
+            <div class="chat-container" id="chat-box">
+                <div class="sys-msg"><span>🚨 系統警報：BTC 盤中急跌 5%，跌破關鍵支撐<br>已啟動緊急辯論會議</span></div>
+            </div>
+            <div class="decision-btn-container" id="decision-btn-area">
+                <button class="glow-btn" style="margin: 0; box-shadow: 0 0 20px rgba(112, 0, 255, 0.6);" onclick="nav('page4')">⚡ 結束辯論，查看最終決議</button>
+            </div>
+        </div>
+
+        <!-- PAGE 4: 投票結果 -->
+        <div id="page4" class="page">
+            <div class="cyber-header"><h2>> AI 委員會投票結果</h2></div>
+            <div class="vote-circle" id="vote-circle-p3">
+                <div style="font-size: 15px; color: var(--text-muted); font-weight:bold;">最終結論</div>
+                <div class="vote-result" id="final-action-p3">HOLD</div>
+                <div style="font-size: 18px; font-weight:bold; color:var(--text-main);" id="final-desc-p3">觀望防守</div>
+            </div>
+            <div class="weight-list">
+                <div class="weight-item"><span>🧠 人格分析 (35%)</span><span id="score-behav-text" style="color:var(--warning)">HOLD (防禦機制)</span></div>
+                <div class="weight-bar-bg"><div class="weight-bar-fill" id="score-behav-bar" style="width:35%; background:var(--secondary)"></div></div>
+                
+                <div class="weight-item"><span>🛡️ 風險控制 (30%)</span><span id="score-risk-text" style="color:var(--warning)">HOLD (風報比極差)</span></div>
+                <div class="weight-bar-bg"><div class="weight-bar-fill" id="score-risk-bar" style="width:30%; background:var(--warning)"></div></div>
+                
+                <div class="weight-item"><span>📈 技術分析 (20%)</span><span id="score-tech-text" style="color:var(--danger)">SELL (技術破壞)</span></div>
+                <div class="weight-bar-bg"><div class="weight-bar-fill" id="score-tech-bar" style="width:20%; background:var(--danger)"></div></div>
+
+                <div class="weight-item"><span>🌐 輿情情緒 (15%)</span><span id="score-sent-text" style="color:var(--success)">BUY (恐慌極值)</span></div>
+                <div class="weight-bar-bg"><div class="weight-bar-fill" id="score-sent-bar" style="width:15%; background:var(--success)"></div></div>
+            </div>
+            <button class="glow-btn" onclick="nav('page5')">生成專屬資產配置 ❯</button>
+        </div>
+
+        <!-- PAGE 5: 策略建議 -->
+        <div id="page5" class="page">
+            <div class="cyber-header"><h2>> 專屬資產配置策略</h2></div>
+            <div class="pie-placeholder" id="pie-chart-p4"><div class="pie-inner" id="pie-inner-p4">100% 現金</div></div>
+            <div class="allocation-list" id="alloc-list-p4">
+                <div class="alloc-item"><div class="dot" style="background:#333"></div>USDT (100%) - 強制空手觀望</div>
+                <div class="alloc-item" style="color:var(--text-muted);"><div class="dot" style="background:transparent; border:1px solid #333;"></div>BTC (0%) - 暫停所有交易</div>
+            </div>
+            <div id="alloc-summary-p4" style="font-size:14px; color:var(--text-main); line-height:1.6; background:rgba(0,0,0,0.5); padding:16px; border-radius:8px; border-left:4px solid var(--secondary); margin-bottom:20px;">
+                💡 <b>個人化防控總結：</b><br>
+                技術面與情緒面出現極端分歧。考量您過去在類似的反轉行情中，極易因 FOMO 觸發過度交易（俗稱 Tilt），並曾造成單次 15% 的嚴重虧損。<br><br>
+                <b>本次決議：強制中斷交易衝動，保留 100% 購買力以保全本金。</b>
+            </div>
+            <button class="glow-btn" onclick="nav('page6')">確認策略並調整倉位 ❯</button>
+        </div>
+
+        <!-- PAGE 6: 執行下單 -->
+        <div id="page6" class="page">
+            <div class="cyber-header"><h2>> 執行交易委託</h2></div>
+            <div class="order-summary">
+                <div class="order-row"><span>資料來源</span><span style="color:var(--primary)">MAX Private API</span></div>
+                <div class="order-row"><span>目標操作</span><span id="order-action-p5" style="color:var(--warning)">清除現有部位 (平倉)</span></div>
+                <div class="order-row"><span>預計換回/消耗</span><span id="order-estimate-p5">約 5,240 USDT</span></div>
+                <div class="order-row"><span>安全鎖定</span><span id="order-lock-p5" style="color:var(--secondary)">24小時內暫停開倉建議</span></div>
+            </div>
+            <button class="glow-btn swipe-btn" id="order-btn-p5" onclick="executeOrder()">🔒 點擊確認：一鍵平倉轉為觀望</button>
+            
+            <!-- 成功畫面 -->
+            <div id="success" class="success-overlay">
+                <div class="success-icon">✅</div>
+                <h2 style="margin-bottom:8px; color:var(--primary); font-family:monospace; letter-spacing:1px;">> 委託成功執行</h2>
+                <p id="success-desc-p5" style="color:var(--text-muted); font-size:15px; margin-bottom:40px;">已透過 MAX API 完成平倉，資產已進入安全水位。</p>
+                <button class="glow-btn" style="width:80%" onclick="resetApp()">返回總覽</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 懸浮聊天按鈕 (定位於手機框內部) -->
+    <div id="floating-chat-btn" onclick="toggleChatPanel()">
+        🤖
+    </div>
+</div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
