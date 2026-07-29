@@ -1,0 +1,23 @@
+{
+  "technical_agent": {
+    "rsi": 72.5,
+    "signal": "BUY"
+  },
+  "sentiment_agent": {
+    "fear_greed": 82,
+    "sentiment": "BUY",
+    "sentiment_score": 88
+  },
+  "investment_committee": {
+    "technical_score": 75,
+    "sentiment_score": 88,
+    "risk_score": 15,
+    "behavior_score": 25,
+    "committee_score": 81.2,
+    "final_action": "BUY"
+  },
+  "llm_input": {
+    "price_usd": "99,230.50",
+    "change_24h": "+6.8%"
+  }
+}
