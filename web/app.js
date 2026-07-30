@@ -38,7 +38,7 @@ const mockData = {
 async function fetchData() {
     try {
         // 優先嘗試向 Java / Python 後端 8080 埠請求最新行情與動態 Agent 分析
-        const response = await fetch('http://localhost:8080/api/report');
+        const response = await fetch('/api/report');
         if (response.ok) {
             const apiData = await response.json();
             console.log('✅ 成功從後端 API 取得實時動態數據:', apiData);
@@ -680,7 +680,7 @@ async function executeOrder() {
         const btnEl = document.getElementById('order-btn-p5');
         if (btnEl) btnEl.innerText = '⌛ 正在連線 MAX API 發起下單...';
 
-        const response = await fetch('http://localhost:8080/api/trade', {
+        const response = await fetch('/api/trade', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -887,7 +887,7 @@ function toggleChatPanel() {
 // 抓取 MAX 交易所真實 K 線走勢資料 (最近 35 根 15 分鐘線，具備 Mock 容錯機制)
 async function fetchMaxKlineData() {
     try {
-        const res = await fetch(`http://localhost:8080/api/proxy?path=/api/v2/k&market=${currentMarket}&limit=35&period=${currentPeriod}`);
+        const res = await fetch(`/api/proxy?path=/api/v2/k&market=${currentMarket}&limit=35&period=${currentPeriod}`);
         if (res.ok) {
             const kData = await res.json();
             renderKlineChart(kData);
@@ -1051,7 +1051,7 @@ function renderKlineChart(kData) {
 async function fetchMaxMarketData() {
     try {
         // 1. 獲取盤口深度委託 (MAX Open API)
-        const depthRes = await fetch(`http://localhost:8080/api/proxy?path=/api/v2/depth&market=${currentMarket}&limit=10`);
+        const depthRes = await fetch(`/api/proxy?path=/api/v2/depth&market=${currentMarket}&limit=10`);
         if (depthRes.ok) {
             const depthData = await depthRes.json();
             updatePhoneOrderBook(depthData);
@@ -1060,7 +1060,7 @@ async function fetchMaxMarketData() {
         }
 
         // 2. 獲取即時成交價 (MAX Open API)
-        const tickerRes = await fetch(`http://localhost:8080/api/proxy?path=/api/v2/tickers/${currentMarket}`);
+        const tickerRes = await fetch(`/api/proxy?path=/api/v2/tickers/${currentMarket}`);
         if (tickerRes.ok) {
             const tickerData = await tickerRes.json();
             updatePhoneMidPrice(tickerData);
@@ -1229,7 +1229,7 @@ async function fetchMaxAllTickers() {
     
     const markets = ['btcusdt', 'ethusdt', 'dogeusdt', 'solusdt'];
     try {
-        const res = await fetch('http://localhost:8080/api/proxy?path=/api/v2/tickers');
+        const res = await fetch('/api/proxy?path=/api/v2/tickers');
         if (res.ok) {
             const allTickers = await res.json();
             renderMarketList(allTickers, markets);
@@ -1249,7 +1249,7 @@ async function fetchMaxAllTickers() {
     
     // 向 Java 後端查詢實時報價補充
     try {
-        const backendRes = await fetch('http://localhost:8080/api/market?market=ethusdt');
+        const backendRes = await fetch('/api/market?market=ethusdt');
         if (backendRes.ok) {
             const bData = await backendRes.json();
             if (bData.price) {

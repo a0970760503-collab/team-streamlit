@@ -31,7 +31,9 @@ if os.path.exists(r_script):
         print("NOTICE: Rscript not found or timed out, using fallback dataset.")
 
 # 2. 本地輕量 API 伺服器處理類別
-class CommitteeAPIHandler(http.server.BaseHTTPRequestHandler):
+class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, directory=os.path.join(base_dir, "web"), **kwargs)
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header('Access-Control-Allow-Origin', '*')
@@ -42,16 +44,19 @@ class CommitteeAPIHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
-        if path == "/api/report":
-            self.handle_report()
-        elif path == "/api/market":
-            self.handle_market(parsed.query)
-        elif path == "/api/proxy":
-            self.handle_proxy(parsed.query)
-        elif path == "/test":
-            self.respond_json({"status": "ok", "message": "API Server Running"})
+        if path.startswith("/api/") or path == "/test":
+            if path == "/api/report":
+                self.handle_report()
+            elif path == "/api/market":
+                self.handle_market(parsed.query)
+            elif path == "/api/proxy":
+                self.handle_proxy(parsed.query)
+            elif path == "/test":
+                self.respond_json({"status": "ok", "message": "API Server Running"})
+            else:
+                self.send_error(404, "Endpoint Not Found")
         else:
-            self.send_error(404, "Endpoint Not Found")
+            super().do_GET()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
@@ -213,8 +218,8 @@ time.sleep(1)
 
 # 3. 開啟預設瀏覽器
 print("\n3/3 Opening Web UI in Browser...")
-file_url = "file:///" + web_index.replace("\\", "/")
-webbrowser.open(file_url)
+url = "http://localhost:8080/"
+webbrowser.open(url)
 
 print("\n==================================================================")
 print("SUCCESS: System is UP and RUNNING!")
