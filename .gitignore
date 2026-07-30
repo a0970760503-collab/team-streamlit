@@ -1,1 +1,4 @@
 target/
+.DS_Store
+*.log
+00-專案整合工作成果與架構說明紀錄.md

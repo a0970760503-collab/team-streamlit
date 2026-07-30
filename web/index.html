@@ -98,6 +98,27 @@
             box-shadow: 0 0 8px rgba(255, 0, 60, 0.2);
         }
 
+        /* 週期按鈕樣式 */
+        .period-btn {
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+            border: 1px solid transparent;
+        }
+        .period-btn:hover {
+            color: var(--text-main);
+            background: rgba(255,255,255,0.1);
+        }
+        .period-btn.active {
+            color: var(--primary);
+            border-color: var(--primary);
+            background: rgba(0, 240, 255, 0.1);
+            box-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
+        }
+
         /* 懸浮彈出式 AI 助理控制面板 (定位於手機框內部) */
         .app-container {
             width: calc(100% - 24px);
@@ -365,18 +386,29 @@
                             <input type="text" id="market-search" placeholder="搜尋..." style="width:52px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:9px; padding:2px 4px; border-radius:3px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') changeMarket(this.value)">
                         </div>
                     </div>
-                    <!-- 第二列：最新成交價與最高/最低價 -->
-                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+                    <!-- 第二列：週期切換列 -->
+                    <div style="display:flex; gap:4px; margin-top:4px; font-size:10px;" id="period-selector">
+                        <span class="period-btn" onclick="changePeriod(1, this)">1分</span>
+                        <span class="period-btn active" onclick="changePeriod(5, this)">5分</span>
+                        <span class="period-btn" onclick="changePeriod(15, this)">15分</span>
+                        <span class="period-btn" onclick="changePeriod(60, this)">1時</span>
+                        <span class="period-btn" onclick="changePeriod(240, this)">4時</span>
+                        <span class="period-btn" onclick="changePeriod(1440, this)">日線</span>
+                        <span class="period-btn" onclick="changePeriod(10080, this)">週線</span>
+                    </div>
+                    
+                    <!-- 第三列：互動數據列 (十字線選中時顯示 OHLC) -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-top:2px;" id="kline-info-bar">
                         <span id="kline-last-price" style="color:var(--success); font-weight:bold;">--</span>
-                        <div style="color:var(--text-muted); font-size:9.5px; display:flex; gap:6px;">
-                            <span>高: <span id="kline-high" style="color:#fff">--</span></span>
-                            <span>低: <span id="kline-low" style="color:#fff">--</span></span>
+                        <div id="kline-tooltip" style="color:var(--text-muted); font-size:9.5px; display:flex; gap:6px;">
+                            <span>高:<span id="kline-high" style="color:#fff">--</span></span>
+                            <span>低:<span id="kline-low" style="color:#fff">--</span></span>
                         </div>
                     </div>
                 </div>
-                <!-- SVG K 線圖畫布區 -->
-                <div style="flex: 1; position: relative;" id="kline-canvas-container">
-                    <svg id="kline-svg" width="100%" height="100%" style="overflow: visible;"></svg>
+                <!-- SVG K 線圖畫布區 (綁定 Touch & Mouse 事件) -->
+                <div style="flex: 1; position: relative; touch-action: none;" id="kline-canvas-container">
+                    <svg id="kline-svg" width="100%" height="100%" style="overflow: visible; cursor: crosshair;"></svg>
                 </div>
             </div>
             
