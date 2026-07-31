@@ -49,8 +49,8 @@ To safely stop all services, press `Ctrl + C` in the terminal.
 ### Usage Instructions
 
 1. **Select Market**: Use the left sidebar to select your desired trading pair (e.g., BTCUSDT). The interactive K-line chart and real-time Orderbook will update automatically.
-3. **AI Committee Debate**: Click the floating chat button on the bottom right and toggle the **召開委員會 (Convene Committee)** switch. Enter a prompt like "Analyze BTC for me" to trigger the multi-agent debate engine.
-4. **Review & Execute**: The AI agents will output a weighted consensus (BUY/HOLD/SELL). If you agree with the recommendation, use the trading panel to adjust your volume and execute the trade with one click.
+2. **AI Committee Debate**: Click the floating chat button on the bottom right and toggle the **召開委員會 (Convene Committee)** switch. Enter a prompt like "Analyze BTC for me" to trigger the multi-agent debate engine.
+3. **Review & Execute**: The AI agents will output a weighted consensus (BUY/HOLD/SELL). If you agree with the recommendation, use the trading panel to adjust your volume and execute the trade with one click.
 
 ### Software Architecture
 - **Frontend**: Vanilla JS / HTML / CSS
@@ -112,8 +112,8 @@ To safely stop all services, press `Ctrl + C` in the terminal.
 ### 使用教學 (Step-by-Step Guide)
 
 1. **選擇交易對**：在左側選單點擊您感興趣的幣種 (例如 BTCUSDT)。中央的互動式 K 線圖與盤口深度將會立刻同步即時數據。
-3. **召開 AI 委員會**：點擊右下角的聊天室按鈕，並開啟 **召開委員會** 開關。在對話框輸入例如「幫我分析目前的 BTC 局勢」，即可觸發 4 位專精不同領域的 AI 代理人進行深度辯論。
-4. **一鍵下單**：AI 將根據辯論結果給出最終建議 (買進/持有/賣出)。若您同意該策略，可直接在交易面板調整數量，並點擊按鈕完成自動化一鍵下單。
+2. **召開 AI 委員會**：點擊右下角的聊天室按鈕，並開啟 **召開委員會** 開關。在對話框輸入例如「幫我分析目前的 BTC 局勢」，即可觸發 4 位專精不同領域的 AI 代理人進行深度辯論。
+3. **一鍵下單**：AI 將根據辯論結果給出最終建議 (買進/持有/賣出)。若您同意該策略，可直接在交易面板調整數量，並點擊按鈕完成自動化一鍵下單。
 
 ### 軟體架構
 - **前端 (Frontend)**：Vanilla JS / HTML / CSS (無須額外建置框架)
