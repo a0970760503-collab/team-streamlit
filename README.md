@@ -31,8 +31,9 @@ A fully integrated trading terminal and automated analysis engine. This system a
 The repository includes an orchestration script that automates the backend API server and opens the web client.
 
 1. Clone the repository and navigate to the root directory.
-2. Ensure you have the necessary dependencies installed for both Python and Java.
-3. Execute the binary via terminal or command prompt:
+2. Rename `.env.example` to `.env` and fill in your API keys.
+3. Ensure you have the necessary dependencies installed for both Python and Java.
+4. Execute the binary via terminal or command prompt:
    ```bash
    python start_demo.py
    ```
@@ -44,6 +45,12 @@ This script will automatically:
 - Establish the CORS proxy for live MAX Exchange data.
 
 To safely stop all services, press `Ctrl + C` in the terminal.
+
+### Usage Instructions
+
+1. **Select Market**: Use the left sidebar to select your desired trading pair (e.g., BTCUSDT). The interactive K-line chart and real-time Orderbook will update automatically.
+3. **AI Committee Debate**: Click the floating chat button on the bottom right and toggle the **召開委員會 (Convene Committee)** switch. Enter a prompt like "Analyze BTC for me" to trigger the multi-agent debate engine.
+4. **Review & Execute**: The AI agents will output a weighted consensus (BUY/HOLD/SELL). If you agree with the recommendation, use the trading panel to adjust your volume and execute the trade with one click.
 
 ### Software Architecture
 - **Frontend**: Vanilla JS / HTML / CSS
@@ -87,8 +94,9 @@ To safely stop all services, press `Ctrl + C` in the terminal.
 本專案內建自動化總控腳本，可一鍵啟動後端 API 伺服器並開啟網頁客戶端。
 
 1. 複製 (Clone) 此儲存庫並進入專案根目錄。
-2. 確保您的系統已安裝 Python 與 Java 的相關依賴環境。
-3. 在終端機或命令提示字元執行以下指令：
+2. 將專案中的 `.env.example` 重新命名為 `.env`，並打開填寫您的 API 金鑰。
+3. 確保您的系統已安裝 Python 與 Java 的相關依賴環境。
+4. 在終端機或命令提示字元執行以下指令：
    ```bash
    python start_demo.py
    ```
@@ -100,6 +108,12 @@ To safely stop all services, press `Ctrl + C` in the terminal.
 - 建立解決 CORS 限制的本地端 API Proxy 轉發服務。
 
 欲安全關閉所有服務，請在終端機按下 `Ctrl + C`。
+
+### 使用教學 (Step-by-Step Guide)
+
+1. **選擇交易對**：在左側選單點擊您感興趣的幣種 (例如 BTCUSDT)。中央的互動式 K 線圖與盤口深度將會立刻同步即時數據。
+3. **召開 AI 委員會**：點擊右下角的聊天室按鈕，並開啟 **召開委員會** 開關。在對話框輸入例如「幫我分析目前的 BTC 局勢」，即可觸發 4 位專精不同領域的 AI 代理人進行深度辯論。
+4. **一鍵下單**：AI 將根據辯論結果給出最終建議 (買進/持有/賣出)。若您同意該策略，可直接在交易面板調整數量，並點擊按鈕完成自動化一鍵下單。
 
 ### 軟體架構
 - **前端 (Frontend)**：Vanilla JS / HTML / CSS (無須額外建置框架)
