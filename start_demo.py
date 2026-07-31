@@ -15,6 +15,8 @@ import threading
 base_dir = os.path.dirname(os.path.abspath(__file__))
 web_index = os.path.join(base_dir, "web", "index.html")
 PORT = 8080
+# 僅綁定本機迴環，避免公共 Wi-Fi 未授權存取
+HOST = "127.0.0.1"
 
 print("==================================================================")
 print("AI Investment Committee Master Orchestrator Starting...")
@@ -25,10 +27,31 @@ r_script = os.path.join(base_dir, "scripts", "update_agent_report.R")
 if os.path.exists(r_script):
     print("1/3 Executing R Data Pipeline (update_agent_report.R)...")
     try:
-        subprocess.run(["Rscript", r_script], cwd=base_dir, capture_output=True, text=True, timeout=10)
-        print("SUCCESS: R script updated agent_report.json.")
-    except Exception as e:
-        print("NOTICE: Rscript not found or timed out, using fallback dataset.")
+        proc = subprocess.run(
+            ["Rscript", r_script],
+            cwd=base_dir,
+            capture_output=True,
+            text=True,
+            encoding='utf-8',
+            errors='replace',
+            timeout=60
+        )
+        if proc.returncode == 0:
+            print("SUCCESS: R script updated agent_report.json.")
+        else:
+            print("WARNING: R script failed with exit code {}.".format(proc.returncode))
+            print("----- Rscript STDOUT -----")
+            print(proc.stdout if proc.stdout else "(empty)")
+            print("----- Rscript STDERR -----")
+            print(proc.stderr if proc.stderr else "(empty)")
+            print("--------------------------")
+            print("NOTICE: Continuing startup with existing fallback dataset.")
+    except FileNotFoundError:
+        print("WARNING: Rscript not found in PATH. R data pipeline skipped.")
+        print("NOTICE: Continuing startup with existing fallback dataset.")
+    except subprocess.TimeoutExpired:
+        print("WARNING: R script exceeded the 60s timeout and was terminated.")
+        print("NOTICE: Continuing startup with existing fallback dataset.")
 
 # 2. 本地輕量 API 伺服器處理類別
 class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
@@ -207,7 +230,7 @@ def fetch_max_ticker(market):
 
 def start_server():
     socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), CommitteeAPIHandler) as httpd:
+    with socketserver.TCPServer((HOST, PORT), CommitteeAPIHandler) as httpd:
         print(f"2/3 API Server is running indefinitely on http://localhost:{PORT}")
         httpd.serve_forever()
 
