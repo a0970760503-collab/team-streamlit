@@ -3,7 +3,7 @@
 **版本**：Baseline v1.0（架構凍結）
 **專案**：Hackathon / MaiCoin 命題
 **核心主題**：AI Investment Committee — AI 不只理解市場，更理解你
-**System Integrator**：定楷
+**System Integrator**：UserA
 **基準來源**：實際程式碼掃描（非僅依架構紀錄文件推測）
 
 ## 1. 文件定位
