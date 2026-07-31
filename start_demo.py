@@ -12,6 +12,9 @@ from datetime import datetime
 import random
 import threading
 import xml.etree.ElementTree as ET
+import hmac
+import hashlib
+import base64
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 web_index = os.path.join(base_dir, "web", "index.html")
@@ -22,6 +25,23 @@ HOST = "127.0.0.1"
 print("==================================================================")
 print("AI Investment Committee Master Orchestrator Starting...")
 print("==================================================================")
+
+class BedrockGate:
+    """序列化所有 Bedrock 呼叫，保證同時在途請求數 == 1 且間隔 >= 1s。"""
+    _lock = threading.Lock()
+    _last_call = 0.0
+    MIN_INTERVAL = 1.0
+
+    @classmethod
+    def invoke(cls, fn, *args, **kwargs):
+        with cls._lock:
+            wait = cls.MIN_INTERVAL - (time.monotonic() - cls._last_call)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                return fn(*args, **kwargs)
+            finally:
+                cls._last_call = time.monotonic()
 
 # 1. 執行 R 數據腳本 (如果安裝了 Rscript)
 r_script = os.path.join(base_dir, "scripts", "update_agent_report.R")
@@ -217,21 +237,79 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         ticker = fetch_max_ticker(market.lower())
         price = ticker["price"]
         total_twd = price * volume
-        order_id = f"MAX_ORD_{int(datetime.now().timestamp() * 1000)}"
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 實作 MAX API 真實 Hooks
+        # 若有環境變數 MAX_ACCESS_KEY 與 MAX_SECRET_KEY 則嘗試真實打單，否則走 Mock 引擎
+        access_key = os.environ.get("MAX_ACCESS_KEY")
+        secret_key = os.environ.get("MAX_SECRET_KEY")
+        
+        if access_key and secret_key:
+            try:
+                nonce = int(time.time() * 1000)
+                api_path = "/api/v2/orders"
+                api_payload = {
+                    "market": market.lower(),
+                    "side": side.lower(),
+                    "volume": str(volume),
+                    "price": str(price),
+                    "ord_type": "limit",
+                    "nonce": nonce
+                }
+                payload_json = json.dumps(api_payload)
+                payload_b64 = base64.b64encode(payload_json.encode('utf-8')).decode('utf-8')
+                signature = hmac.new(
+                    secret_key.encode('utf-8'),
+                    payload_b64.encode('utf-8'),
+                    hashlib.sha256
+                ).hexdigest()
 
-        res = {
-            "status": "201 Created",
-            "success": True,
-            "orderId": order_id,
-            "market": market,
-            "side": side,
-            "price": price,
-            "volume": volume,
-            "totalTWD": total_twd,
-            "executedAt": timestamp,
-            "message": "✅ 雙向數據流下單成功！訂單已由 MAX API 模擬引擎撮合，並更新您的個人資產配置。"
-        }
+                req = urllib.request.Request(f"https://max-api.maicoin.com{api_path}")
+                req.add_header('X-MAX-ACCESSKEY', access_key)
+                req.add_header('X-MAX-PAYLOAD', payload_b64)
+                req.add_header('X-MAX-SIGNATURE', signature)
+                req.add_header('Content-Type', 'application/json')
+                
+                response = urllib.request.urlopen(req, data=payload_json.encode('utf-8'), timeout=5)
+                max_res = json.loads(response.read().decode('utf-8'))
+                
+                order_id = str(max_res.get("id", f"MAX_ORD_{nonce}"))
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                res = {
+                    "status": "201 Created",
+                    "success": True,
+                    "orderId": order_id,
+                    "market": market,
+                    "side": side,
+                    "price": price,
+                    "volume": volume,
+                    "totalTWD": total_twd,
+                    "executedAt": timestamp,
+                    "message": "✅ 真實 API 下單成功！訂單已送至 MAX 交易所。"
+                }
+            except Exception as e:
+                res = {
+                    "status": "500 Internal Server Error",
+                    "success": False,
+                    "message": f"❌ 真實 API 下單失敗: {str(e)}"
+                }
+        else:
+            # Mock 引擎
+            nonce = int(time.time() * 1000)
+            order_id = f"MAX_ORD_{nonce}"
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            res = {
+                "status": "201 Created",
+                "success": True,
+                "orderId": order_id,
+                "market": market,
+                "side": side,
+                "price": price,
+                "volume": volume,
+                "totalTWD": total_twd,
+                "executedAt": timestamp,
+                "message": "✅ 雙向數據流下單成功！(Mock API: 未設置環境變數，已由模擬引擎撮合)"
+            }
+            
         self.respond_json(res)
 
     def handle_news(self):
