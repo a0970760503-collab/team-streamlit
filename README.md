@@ -16,6 +16,8 @@ A fully integrated trading terminal and automated analysis engine. This system a
 ### Interface & Graphics
 - **Real-Time Market Data**: Live integration with MAX API for Ticker and Depth (Orderbook).
 - **Interactive Technical Charts**: Native SVG-based rendering with interactive crosshairs and multi-period timeframes, supporting magnetic price snapping.
+- **Real-Time Crypto News**: Dynamic integration of authentic RSS feeds (e.g., Cointelegraph) to stream relevant market news, filtering content based on the active trading pair.
+- **Cross-Platform PWA**: Progressive Web App support ensuring seamless installation on mobile devices with `100dvh` layout optimizations for a native-like experience on Safari/Chrome.
 
 ## Installation & Usage
 
@@ -70,6 +72,8 @@ To safely stop all services, press `Ctrl + C` in the terminal.
 ### 介面與圖表
 - **即時市場數據**：與 MAX API 實時對接，即時更新 Ticker 報價與 Orderbook 盤口深度。
 - **互動式技術圖表**：使用原生 SVG 渲染 K 線圖，支援多週期切換與互動式十字游標 (具備收盤價磁吸功能)。
+- **即時加密貨幣新聞**：動態串接真實 RSS 新聞源 (如 Cointelegraph)，並根據當前觀看的幣種進行智慧過濾，提供最即時的市場脈動。
+- **跨平台 PWA 支援**：支援漸進式網頁應用程式 (PWA) 安裝，並針對 Safari/Chrome 行動版瀏覽器導入 `100dvh` 排版優化，提供媲美原生 APP 的無縫體驗。
 
 ## 安裝與執行
 
