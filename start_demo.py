@@ -6,7 +6,9 @@ import webbrowser
 import socketserver
 import http.server
 import json
+import socket
 import urllib.request
+import urllib.error
 import urllib.parse
 from datetime import datetime
 import random
@@ -96,7 +98,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             elif path == "/api/proxy":
                 self.handle_proxy(parsed.query)
             elif path == "/api/news":
-                self.handle_news()
+                self.handle_news(parsed.query)
             elif path == "/test":
                 self.respond_json({"status": "ok", "message": "API Server Running"})
             else:
@@ -121,6 +123,8 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         ticker = fetch_max_ticker("soltwd")
         price = ticker["price"]
         change24h = ticker["change24h"]
+        data_source = ticker.get("dataSource", "unavailable")
+        price_available = data_source == "live" and price is not None and change24h is not None
         
         # 讀取真實 R 語言跑出的 agent_report.json
         try:
@@ -149,6 +153,11 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             fear_greed = 68
             behavior_score = 80
 
+        if price_available:
+            price_phrase = f"當前 SOL/TWD 即時報價 ${price:.2f} (24h: {change24h:+.2f}%)"
+        else:
+            price_phrase = "SOL/TWD 即時報價暫時無法取得（行情來源異常，未以任何替代數值填補）"
+
         debates = [
             {
                 "agent": "Technical Agent (技術分析師)",
@@ -156,7 +165,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "avatar": "📊",
                 "score": str(int(rsi)),
                 "signal": signal,
-                "text": f"當前 SOL/TWD 即時報價 ${price:.2f} (24h: {change24h:+.2f}%)，RSI 為 {rsi}。5日與20日均線呈現穩健走勢，技術面信號為 {signal}！"
+                "text": f"{price_phrase}，RSI 為 {rsi}。5日與20日均線呈現穩健走勢，技術面信號為 {signal}！"
             },
             {
                 "agent": "Risk Agent (風控長)",
@@ -188,8 +197,10 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         sell_votes = max(0, 100 - buy_votes - hold_votes)
 
         res = {
-            "currentPrice": price,
-            "change24h": change24h,
+            "currentPrice": price if price_available else None,
+            "change24h": change24h if price_available else None,
+            "dataSource": data_source,
+            "priceError": ticker.get("error"),
             "debates": debates,
             "committee": {
                 "buyPercentage": buy_votes,
@@ -224,8 +235,9 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             url += f"?{actual_query_string}"
             
         try:
-            req = urllib.request.urlopen(url, timeout=5)
-            data = json.loads(req.read().decode('utf-8'))
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            res_req = urllib.request.urlopen(req, timeout=5)
+            data = json.loads(res_req.read().decode('utf-8'))
             self.respond_json(data)
         except Exception as e:
             self.send_error(500, f"Proxy Error: {str(e)}")
@@ -236,6 +248,19 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         volume = float(payload.get("volume", 1.0))
         ticker = fetch_max_ticker(market.lower())
         price = ticker["price"]
+        if ticker.get("dataSource") != "live" or price is None:
+            # P10：報價不可用時不得以假價成交，直接中止委託並明示原因
+            self.respond_json({
+                "status": "503 Service Unavailable",
+                "success": False,
+                "dataSource": "unavailable",
+                "market": market,
+                "side": side,
+                "volume": volume,
+                "message": "❌ 無法取得即時報價，為避免以非即時價格成交，已中止此次委託。",
+                "error": ticker.get("error")
+            })
+            return
         total_twd = price * volume
         
         # 實作 MAX API 真實 Hooks
@@ -312,11 +337,27 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             
         self.respond_json(res)
 
-    def handle_news(self):
+    def handle_news(self, query_str=""):
+        params = urllib.parse.parse_qs(query_str)
+        market_query = params.get("market", [""])[0].lower()
+        
         url = "https://cointelegraph.com/rss"
+        if market_query:
+            if market_query == "btc":
+                url = "https://cointelegraph.com/rss/tag/bitcoin"
+            elif market_query == "eth":
+                url = "https://cointelegraph.com/rss/tag/ethereum"
+            elif market_query == "sol":
+                url = "https://cointelegraph.com/rss/tag/solana"
+            elif market_query == "doge":
+                url = "https://cointelegraph.com/rss/tag/dogecoin"
+            else:
+                url = f"https://cointelegraph.com/rss/tag/{market_query}"
+                
         try:
-            req = urllib.request.urlopen(url, timeout=5)
-            xml_data = req.read().decode('utf-8')
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            res_req = urllib.request.urlopen(req, timeout=5)
+            xml_data = res_req.read().decode('utf-8')
             root = ET.fromstring(xml_data)
             items = []
             for item in root.findall('./channel/item')[:5]:
@@ -346,16 +387,38 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
 
 def fetch_max_ticker(market):
+    """向 MAX 取得即時報價。
+
+    P10：取得失敗時一律回傳 dataSource="unavailable" 並將數值留空，
+    絕不回傳任何硬編碼的替代價格，避免前端顯示看似正常的假數字。
+    """
     url = f"https://max-api.maicoin.com/api/v2/tickers/{market}"
     try:
-        req = urllib.request.urlopen(url, timeout=3)
-        res = json.loads(req.read().decode('utf-8'))
-        last_price = float(res.get("last", 5200))
-        open_price = float(res.get("open", 5100))
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+        with urllib.request.urlopen(req, timeout=3) as res_req:
+            res = json.loads(res_req.read().decode('utf-8'))
+        last_price = float(res["last"])
+        open_price = float(res["open"])
+        if open_price == 0:
+            raise ValueError("open price 為 0，無法計算 24h 變動率")
         change = ((last_price - open_price) / open_price) * 100
-        return {"price": last_price, "change24h": round(change, 2), "volume": float(res.get("vol", 0))}
-    except:
-        return {"price": 2411.2, "change24h": 1.10, "volume": 12500.0}
+        return {
+            "price": last_price,
+            "change24h": round(change, 2),
+            "volume": float(res.get("vol", 0) or 0),
+            "dataSource": "live",
+        }
+    except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError,
+            json.JSONDecodeError, KeyError, TypeError, ValueError, OSError) as exc:
+        detail = "{0}: {1}".format(type(exc).__name__, exc)
+        print("[WARN] MAX ticker 取得失敗，已標記 dataSource=unavailable: {0}".format(detail))
+        return {
+            "price": None,
+            "change24h": None,
+            "volume": None,
+            "dataSource": "unavailable",
+            "error": detail,
+        }
 
 def start_server():
     socketserver.TCPServer.allow_reuse_address = True

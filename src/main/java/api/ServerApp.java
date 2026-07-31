@@ -1,6 +1,7 @@
 package api;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
@@ -56,8 +57,10 @@ public class ServerApp {
 
             // 實時向 MAX 交易所 API 抓取價格
             JsonObject maxMarketData = fetchMaxTicker("soltwd");
-            double currentPrice = maxMarketData.get("price").getAsDouble();
-            double change24h = maxMarketData.get("change24h").getAsDouble();
+            boolean priceAvailable = isLive(maxMarketData);
+            Double currentPrice = priceAvailable ? maxMarketData.get("price").getAsDouble() : null;
+            Double change24h = priceAvailable && !maxMarketData.get("change24h").isJsonNull()
+                    ? maxMarketData.get("change24h").getAsDouble() : null;
 
             double rsi = 45.0 + (Math.random() * 20 - 10);
             double mdd = 12.5;
@@ -72,8 +75,11 @@ public class ServerApp {
             techAgent.put("avatar", "📊");
             techAgent.put("signal", rsi < 30 ? "BUY" : (rsi > 70 ? "SELL" : "HOLD"));
             techAgent.put("score", String.valueOf((int) Math.round(rsi)));
-            techAgent.put("text", String.format("當前 SOL/TWD 即時報價 $%.2f (24h: %+.2f%%)，RSI 為 %.1f。5日與20日均線呈現穩健走勢，技術面信號為 %s！",
-                    currentPrice, change24h, rsi, techAgent.get("signal")));
+            String pricePhrase = (currentPrice != null && change24h != null)
+                    ? String.format("當前 SOL/TWD 即時報價 $%.2f (24h: %+.2f%%)", currentPrice, change24h)
+                    : "SOL/TWD 即時報價暫時無法取得（行情來源異常，未以任何替代數值填補）";
+            techAgent.put("text", String.format("%s，RSI 為 %.1f。5日與20日均線呈現穩健走勢，技術面信號為 %s！",
+                    pricePhrase, rsi, techAgent.get("signal")));
             debates.add(techAgent);
 
             Map<String, String> riskAgent = new HashMap<>();
@@ -120,6 +126,10 @@ public class ServerApp {
             responseJson.add("rawReport", report);
             responseJson.addProperty("currentPrice", currentPrice);
             responseJson.addProperty("change24h", change24h);
+            responseJson.addProperty("dataSource", priceAvailable ? "live" : "unavailable");
+            if (!priceAvailable && maxMarketData.has("error")) {
+                responseJson.addProperty("priceError", maxMarketData.get("error").getAsString());
+            }
             responseJson.add("debates", gson.toJsonTree(debates));
             responseJson.add("committee", committee);
             responseJson.addProperty("timestamp", LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
@@ -128,7 +138,12 @@ public class ServerApp {
 
         } catch (Exception e) {
             e.printStackTrace();
-            return "{\"error\":\"" + e.getMessage() + "\"}";
+            JsonObject failed = new JsonObject();
+            failed.add("currentPrice", JsonNull.INSTANCE);
+            failed.add("change24h", JsonNull.INSTANCE);
+            failed.addProperty("dataSource", "unavailable");
+            failed.addProperty("error", e.getMessage());
+            return failed.toString();
         }
     }
 
@@ -141,7 +156,9 @@ public class ServerApp {
             JsonObject data = fetchMaxTicker(market);
             return data.toString();
         } catch (Exception e) {
-            return "{\"error\":\"" + e.getMessage() + "\"}";
+            JsonObject failed = new JsonObject();
+            markUnavailable(failed, e.getClass().getSimpleName() + ": " + e.getMessage());
+            return failed.toString();
         }
     }
 
@@ -156,6 +173,21 @@ public class ServerApp {
             double volume = Double.parseDouble(tradeRequest.getOrDefault("volume", "1.0").toString());
 
             JsonObject maxData = fetchMaxTicker(market);
+            if (!isLive(maxData)) {
+                // P10：報價不可用時不得以假價成交
+                JsonObject aborted = new JsonObject();
+                aborted.addProperty("status", "503 Service Unavailable");
+                aborted.addProperty("success", false);
+                aborted.addProperty("dataSource", "unavailable");
+                aborted.addProperty("market", market.toUpperCase());
+                aborted.addProperty("side", side.toUpperCase());
+                aborted.addProperty("volume", volume);
+                aborted.addProperty("message", "❌ 無法取得即時報價，為避免以非即時價格成交，已中止此次委託。");
+                if (maxData.has("error")) {
+                    aborted.addProperty("error", maxData.get("error").getAsString());
+                }
+                return aborted.toString();
+            }
             double price = maxData.get("price").getAsDouble();
             double totalPrice = price * volume;
 
@@ -197,14 +229,33 @@ public class ServerApp {
                 result.addProperty("price", lastPrice);
                 result.addProperty("change24h", change);
                 result.addProperty("volume", json.get("vol").getAsDouble());
+                result.addProperty("dataSource", "live");
             } else {
-                result.addProperty("price", market.contains("sol") ? 5200.0 : 2100000.0);
-                result.addProperty("change24h", 2.35);
+                markUnavailable(result, "MAX API HTTP " + response.statusCode());
             }
         } catch (Exception e) {
-            result.addProperty("price", market.contains("sol") ? 5200.0 : 2100000.0);
-            result.addProperty("change24h", 2.35);
+            markUnavailable(result, e.getClass().getSimpleName() + ": " + e.getMessage());
         }
         return result;
     }
-}
+
+    /**
+     * P10：報價不可用時，價格欄位一律留為 JSON null 並標記 dataSource=unavailable，
+     * 不得填入任何硬編碼的替代價格。
+     */
+    private void markUnavailable(JsonObject result, String detail) {
+        System.out.println("[WARN] MAX ticker 取得失敗，已標記 dataSource=unavailable: " + detail);
+        result.add("price", JsonNull.INSTANCE);
+        result.add("change24h", JsonNull.INSTANCE);
+        result.add("volume", JsonNull.INSTANCE);
+        result.addProperty("dataSource", "unavailable");
+        result.addProperty("error", detail);
+    }
+
+    private static boolean isLive(JsonObject ticker) {
+        return ticker.has("dataSource")
+                && "live".equals(ticker.get("dataSource").getAsString())
+                && ticker.has("price")
+                && !ticker.get("price").isJsonNull();
+    }
+}

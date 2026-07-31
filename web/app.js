@@ -7,6 +7,78 @@ let klineDataCache = [];
 let klineLayout = {}; // 預設看盤商品代號
 let activeDashboardView = 'home'; // 預設底層視圖：'home'（行情首頁）或 'chart'（詳細 K 線）
 
+// P10：資料來源可信度追蹤。任何降級（agent_report.json／mockData／盤口或 K 線 Mock）
+// 都必須標記為非 live，並在畫面亮出警示橫幅，讓觀看者知道數值不是即時報價。
+const PRICE_UNAVAILABLE = '--';
+const degradedChannels = new Map(); // channel -> 降級原因
+
+function markDataSource(channel, source, reason) {
+    if (source === 'live') {
+        degradedChannels.delete(channel);
+    } else {
+        degradedChannels.set(channel, reason || '資料來源不可用');
+    }
+    updateDataSourceBanner();
+}
+
+function isLiveDataSource(data) {
+    return !!data && data.dataSource === 'live';
+}
+
+// 價格／漲跌顯示：非 live 或缺值時一律顯示 '--'，絕不補假數字
+function formatPriceText(value, dataSource) {
+    if (dataSource !== 'live' || value === null || value === undefined || value === '' || Number.isNaN(Number(value))) {
+        return PRICE_UNAVAILABLE;
+    }
+    return Number(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function formatChangeText(value, dataSource) {
+    if (dataSource !== 'live' || value === null || value === undefined || value === '' || Number.isNaN(Number(value))) {
+        return PRICE_UNAVAILABLE;
+    }
+    const num = Number(value);
+    return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`;
+}
+
+// 以原生 DOM 建立／更新警示橫幅（無任何函式庫）
+function updateDataSourceBanner() {
+    const host = document.querySelector('.phone-frame') || document.body;
+    let banner = document.getElementById('data-source-banner');
+
+    if (degradedChannels.size === 0) {
+        if (banner) banner.style.display = 'none';
+        return;
+    }
+
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'data-source-banner';
+        banner.setAttribute('role', 'alert');
+        banner.style.position = 'absolute';
+        banner.style.top = '0';
+        banner.style.left = '0';
+        banner.style.right = '0';
+        banner.style.zIndex = '2000';
+        banner.style.padding = '8px 12px';
+        banner.style.background = 'rgba(255, 0, 60, 0.92)';
+        banner.style.color = '#fff';
+        banner.style.fontSize = '11px';
+        banner.style.fontWeight = 'bold';
+        banner.style.lineHeight = '1.4';
+        banner.style.textAlign = 'center';
+        banner.style.letterSpacing = '0.3px';
+        banner.style.boxShadow = '0 2px 12px rgba(255, 0, 60, 0.5)';
+        host.appendChild(banner);
+    }
+
+    const reasons = Array.from(degradedChannels.entries())
+        .map(([channel, reason]) => `${channel}: ${reason}`)
+        .join('　/　');
+    banner.textContent = `⚠ 資料來源異常：即時行情暫不可用，以下數值非即時報價（${reasons}）`;
+    banner.style.display = 'block';
+}
+
 // 預設的 Mock 備用數據，若 Fetch API 讀取失敗時將自動採用此資料
 const mockData = {
     technical_agent: { 
@@ -31,7 +103,8 @@ const mockData = {
         behavior_speech: '「我是投資人格分析師。分析過往交易紀錄，您在類似的大跌急跌行情中，極易因 FOMO 心理進行恐慌性割肉或盲目抄底，單次最大資金回撤曾高達 15%。我強烈主張中斷開倉衝動。」',
         chair_speech: '「我是委員會主席。感謝各位委員。技術面看空，情緒面看多，但考量到用戶激進的交易人格特質，目前風控紅線已亮起。本委員會最終裁決：HOLD (觀望防守)，強制保留 100% USDT 購買力。」'
     },
-    llm_input: { price_usd: '96,500.00', change_24h: '-5.2%' }
+    // P10：Mock 情境不提供任何價格數值，一律顯示為不可用
+    llm_input: { price_usd: null, change_24h: null }
 };
 
 // 實作資料讀取 (Fetch API)：優先連線 Java Spring Boot REST API，失敗時降級讀取 agent_report.json 或 Mock
@@ -45,10 +118,19 @@ async function fetchData() {
             
             // 將 API 資料 Normalize 為原本 UI 期望的 mockData 格式，防止 Crash
             globalData = JSON.parse(JSON.stringify(mockData)); // 深拷貝為基底
-            
-            if (apiData.currentPrice) globalData.currentPrice = apiData.currentPrice;
-            if (apiData.change24h) globalData.change24h = apiData.change24h;
-            globalData.llm_input = { price_usd: globalData.currentPrice, change_24h: globalData.change24h };
+
+            // P10：只有後端明示 dataSource === 'live' 才視為即時報價
+            const live = apiData.dataSource === 'live'
+                && apiData.currentPrice !== null && apiData.currentPrice !== undefined;
+            globalData.dataSource = live ? 'live' : 'unavailable';
+            globalData.currentPrice = live ? apiData.currentPrice : null;
+            globalData.change24h = live ? apiData.change24h : null;
+            globalData.llm_input = {
+                price_usd: globalData.currentPrice,
+                change_24h: globalData.change24h
+            };
+            markDataSource('即時報價', globalData.dataSource,
+                apiData.priceError || apiData.error || '後端標記 dataSource=unavailable');
 
             // 對應 4 位 Agent 的資料
             if (apiData.debates && apiData.debates.length >= 4) {
@@ -88,16 +170,24 @@ async function fetchData() {
         }
     } catch (error) {
         console.warn('連線 API 失敗，嘗試讀取本地 agent_report.json 或備用 mockData...', error.message);
+        // P10：落到 agent_report.json 或 mockData 一律視為非 live，必須亮警示橫幅
+        let fallbackLabel = '本地備用資料 (mockData)';
         try {
             const response = await fetch('agent_report.json');
             if (response.ok) {
                 globalData = await response.json();
+                fallbackLabel = '本地快照 (agent_report.json)';
             } else {
                 globalData = JSON.parse(JSON.stringify(mockData));
             }
         } catch (e) {
             globalData = JSON.parse(JSON.stringify(mockData));
         }
+        globalData.dataSource = 'unavailable';
+        globalData.currentPrice = null;
+        globalData.change24h = null;
+        globalData.llm_input = { price_usd: null, change_24h: null };
+        markDataSource('即時報價', 'unavailable', `${fallbackLabel}，非即時報價`);
     }
     
     // 讀取成功後，立即渲染與數據相關的 UI
@@ -331,8 +421,9 @@ function generateDynamicSpeech(agent, data) {
         const behav = data.investment_committee.behavior_score;
         const score = data.investment_committee.committee_score;
         const action = data.investment_committee.final_action;
-        const price = data.llm_input.price_usd;
-        const change = data.llm_input.change_24h;
+        const source = data.dataSource;
+        const priceText = formatPriceText(data.llm_input && data.llm_input.price_usd, source);
+        const changeText = formatChangeText(data.llm_input && data.llm_input.change_24h, source);
         
         const openings = [
             `「我是委員會主席。感謝各位委員的精彩陳述。`,
@@ -340,7 +431,10 @@ function generateDynamicSpeech(agent, data) {
             `「本閉門會議圓滿結束，現將各項量化指標總結如下：`
         ];
         
-        const summary = `當前 SOL 市場報價為 $${price} USD (24小時變動: ${change})。技術指標得分 ${tech}，情緒指數得分 ${sent}，風控長評分 ${risk} 分，人格特質偏離度 ${behav} 分。綜合加權得分為 ${score} 分。`;
+        const priceSummary = priceText === PRICE_UNAVAILABLE
+            ? `SOL 即時報價目前無法取得（資料來源異常，本次未使用任何替代價格）。`
+            : `當前 SOL 市場報價為 $${priceText} (24小時變動: ${changeText})。`;
+        const summary = `${priceSummary}技術指標得分 ${tech}，情緒指數得分 ${sent}，風控長評分 ${risk} 分，人格特質偏離度 ${behav} 分。綜合加權得分為 ${score} 分。`;
         
         let verdict = '';
         if (action === 'BUY') {
@@ -733,10 +827,19 @@ async function executeOrder() {
             console.log('✅ 雙向數據流下單成功:', resData);
             const descEl = document.getElementById('success-desc-p5');
             if (descEl) {
-                descEl.innerHTML = `訂單編號: <strong>${resData.orderId}</strong><br>` +
-                                  `交易狀態: <strong>${resData.status}</strong><br>` +
-                                  `執行金額: <strong>$${resData.price} TWD</strong> (${resData.executedAt})<br>` +
-                                  `${resData.message}`;
+                if (resData.success === false || resData.price === null || resData.price === undefined) {
+                    // P10：報價不可用而中止委託時，不得顯示任何成交金額
+                    markDataSource('下單報價', 'unavailable', resData.error || '報價不可用，委託已中止');
+                    descEl.innerHTML = `交易狀態: <strong>${resData.status || '已中止'}</strong><br>` +
+                                       `執行金額: <strong>${PRICE_UNAVAILABLE}</strong><br>` +
+                                       `${resData.message || '即時報價不可用，未送出任何委託。'}`;
+                } else {
+                    markDataSource('下單報價', 'live');
+                    descEl.innerHTML = `訂單編號: <strong>${resData.orderId}</strong><br>` +
+                                       `交易狀態: <strong>${resData.status}</strong><br>` +
+                                       `執行金額: <strong>$${resData.price} TWD</strong> (${resData.executedAt})<br>` +
+                                       `${resData.message}`;
+                }
             }
         }
     } catch (e) {
@@ -879,18 +982,27 @@ async function sendAssistantMsg() {
         let replyText = "";
         const lowerInput = userText.toLowerCase();
 
+        // P10：報價不可用時明確說明，不得編造任何數字
+        const src = globalData && globalData.dataSource;
+        const priceText = formatPriceText(globalData && globalData.currentPrice, src);
+        const changeText = formatChangeText(globalData && globalData.change24h, src);
+        const quoteAvailable = priceText !== PRICE_UNAVAILABLE;
+        const quoteLine = quoteAvailable
+            ? `當前市場 SOL/TWD 即時價為 $${priceText} TWD (${changeText})`
+            : `目前即時報價暫時無法取得（資料來源異常，未以任何替代數值填補）`;
+
         if (lowerInput.includes("你好") || lowerInput.includes("hello") || lowerInput.includes("嗨")) {
-            replyText = `您好！我是您的 24h AI 投資助理。當前市場 SOL/TWD 即時價為 $${(globalData && globalData.currentPrice) || '2411.20'} TWD (${(globalData && globalData.change24h) ? (globalData.change24h > 0 ? '+' : '') + globalData.change24h : '+1.10'}%)。請問有什麼我可以幫您的嗎？`;
+            replyText = `您好！我是您的 24h AI 投資助理。${quoteLine}。請問有什麼我可以幫您的嗎？`;
         } else if (lowerInput.includes("分析") || lowerInput.includes("買") || lowerInput.includes("賣") || lowerInput.includes("建議")) {
             replyText = `收到針對「${userText}」的決策諮詢！目前技術面 RSI 與風控 MDD 水位已獲取。若需要 4 位專業 Agent 進行完整辯論並獲取主席投票決議，請開啟下方的「⚡ 召開委員會」開關後點擊送出！`;
         } else if (lowerInput.includes("btc") || lowerInput.includes("比特幣")) {
-            const p = (globalData && globalData.currentPrice) ? globalData.currentPrice : '64,862.31';
-            const c = (globalData && globalData.change24h) ? (globalData.change24h > 0 ? '+' : '') + globalData.change24h : '+0.97';
-            replyText = `收到！我們為您監控中。如果您查詢的是當前鎖定商品，最新成交價約為 $${p} (${c}%)。市場正於高檔強勢整理，若需執行完整分析與自動平倉，請點擊下方的「⚡ 召開委員會」。`;
+            replyText = quoteAvailable
+                ? `收到！我們為您監控中。如果您查詢的是當前鎖定商品，最新成交價約為 $${priceText} (${changeText})。若需執行完整分析與自動平倉，請點擊下方的「⚡ 召開委員會」。`
+                : `收到！但目前即時行情來源異常，最新成交價暫時無法取得，我不會提供未經確認的價格。連線恢復後可再查詢，或直接點擊下方的「⚡ 召開委員會」。`;
         } else if (lowerInput.includes("eth") || lowerInput.includes("以太")) {
-            const p = (globalData && globalData.currentPrice) ? globalData.currentPrice : '1,927.74';
-            const c = (globalData && globalData.change24h) ? (globalData.change24h > 0 ? '+' : '') + globalData.change24h : '+1.37';
-            replyText = `收到！我們為您監控中。如果您查詢的是當前鎖定商品，最新成交價約為 $${p} (${c}%)。若需多代理人介入深入評估與風險控管，請點擊下方的「⚡ 召開委員會」。`;
+            replyText = quoteAvailable
+                ? `收到！我們為您監控中。如果您查詢的是當前鎖定商品，最新成交價約為 $${priceText} (${changeText})。若需多代理人介入深入評估與風險控管，請點擊下方的「⚡ 召開委員會」。`
+                : `收到！但目前即時行情來源異常，最新成交價暫時無法取得，我不會提供未經確認的價格。連線恢復後可再查詢，或點擊下方的「⚡ 召開委員會」。`;
         } else {
             replyText = `已收到您的詢問：「${userText}」。AI 投資助手隨時為您監控 24h 加密市場。若您需要深入的量化風控與委員會動態投票，請點擊下方「⚡ 召開委員會」開關！`;
         }
@@ -928,19 +1040,22 @@ async function fetchMaxKlineData() {
         const res = await fetch(`/api/proxy?path=/api/v2/k&market=${currentMarket}&limit=35&period=${currentPeriod}`);
         if (res.ok) {
             const kData = await res.json();
-            renderKlineChart(kData);
+            markDataSource('K 線走勢', 'live');
+            renderKlineChart(kData, true);
         } else {
             throw new Error('API 回傳狀態異常');
         }
     } catch (e) {
         console.warn(`無法獲取 MAX 交易所 K 線資料 (${currentMarket})，啟用 Mock 備用走勢:`, e.message);
+        // P10：Mock 走勢上台必須讓人看得出來，價格欄位一律顯示 '--' 並亮警示橫幅
+        markDataSource('K 線走勢', 'unavailable', 'Mock 模擬走勢，非即時 K 線');
         const fallbackData = generateMockKlineData(currentMarket, currentPeriod);
-        renderKlineChart(fallbackData);
+        renderKlineChart(fallbackData, false);
     }
 }
 
 // 手繪渲染賽博龐克風格 SVG K 線圖
-function renderKlineChart(kData) {
+function renderKlineChart(kData, isLive = true) {
     const svg = document.getElementById('kline-svg');
     if (!svg) return;
 
@@ -1073,15 +1188,17 @@ function renderKlineChart(kData) {
 
     const lastPriceEl = document.getElementById('kline-last-price');
     if (lastPriceEl) {
-        lastPriceEl.innerText = `${latestClose.toLocaleString('en-US', {minimumFractionDigits: 1})} (${sign}${changePct}%)`;
-        lastPriceEl.style.color = changePct >= 0 ? 'var(--success)' : 'var(--danger)';
+        lastPriceEl.innerText = isLive
+            ? `${latestClose.toLocaleString('en-US', {minimumFractionDigits: 1})} (${sign}${changePct}%)`
+            : `${PRICE_UNAVAILABLE} (${PRICE_UNAVAILABLE})`;
+        lastPriceEl.style.color = !isLive ? 'var(--danger)' : (changePct >= 0 ? 'var(--success)' : 'var(--danger)');
     }
 
     const highEl = document.getElementById('kline-high');
     const lowEl = document.getElementById('kline-low');
     if (highEl && lowEl) {
-        highEl.innerText = Number(latestK[2]).toLocaleString('en-US', {minimumFractionDigits: 1});
-        lowEl.innerText = Number(latestK[3]).toLocaleString('en-US', {minimumFractionDigits: 1});
+        highEl.innerText = isLive ? Number(latestK[2]).toLocaleString('en-US', {minimumFractionDigits: 1}) : PRICE_UNAVAILABLE;
+        lowEl.innerText = isLive ? Number(latestK[3]).toLocaleString('en-US', {minimumFractionDigits: 1}) : PRICE_UNAVAILABLE;
     }
 }
 
@@ -1101,12 +1218,15 @@ async function fetchMaxMarketData() {
         const tickerRes = await fetch(`/api/proxy?path=/api/v2/tickers/${currentMarket}`);
         if (tickerRes.ok) {
             const tickerData = await tickerRes.json();
-            updatePhoneMidPrice(tickerData);
+            markDataSource('盤口報價', 'live');
+            updatePhoneMidPrice(tickerData, true);
         } else {
             throw new Error('Ticker API Response Error');
         }
     } catch (e) {
         console.warn(`無法讀取 MAX 交易所實時公開 API (${currentMarket})，啟用盤口 Mock 備用資料:`, e.message);
+        // P10：Mock 盤口必須標記為非即時，中間價顯示 '--'
+        markDataSource('盤口報價', 'unavailable', 'Mock 模擬盤口，非即時委託簿');
         
         // 抓取或生成當前代幣對應的基準價格，產生 Mock 深度與價格
         const mockKline = generateMockKlineData(currentMarket, currentPeriod);
@@ -1123,7 +1243,7 @@ async function fetchMaxMarketData() {
             ]
         };
         updatePhoneOrderBook(depthMock);
-        updatePhoneMidPrice({ last: lastPrice.toString() });
+        updatePhoneMidPrice({ last: lastPrice.toString() }, false);
     }
 }
 
@@ -1184,12 +1304,18 @@ function updatePhoneOrderBook(depthData) {
 }
 
 // 動態更新 UI
-function updatePhoneMidPrice(tickerData) {
+function updatePhoneMidPrice(tickerData, isLive = true) {
     const midPriceEl = document.getElementById('phone-mid-price');
-    if (midPriceEl && tickerData.last) {
-        const price = Number(tickerData.last);
-        midPriceEl.innerText = price.toLocaleString('en-US', {minimumFractionDigits: 2});
+    if (!midPriceEl) return;
+    if (!isLive || !tickerData || !tickerData.last) {
+        // P10：非即時來源不顯示任何數字
+        midPriceEl.innerText = PRICE_UNAVAILABLE;
+        midPriceEl.style.color = 'var(--danger)';
+        return;
     }
+    const price = Number(tickerData.last);
+    midPriceEl.innerText = price.toLocaleString('en-US', {minimumFractionDigits: 2});
+    midPriceEl.style.color = '#fff';
 }
 
 // 實作商品搜尋與切換機制 (自動跳轉至 K 線詳情視圖)
@@ -1206,9 +1332,29 @@ function changeMarket(newMarket) {
     
     // 立即清空舊的畫布與報價
     const svg = document.getElementById('kline-svg');
-    if (svg) svg.innerHTML = '';
+    if (svg) svg.innerHTML = '<text x="50%" y="50%" fill="var(--text-muted)" font-size="12" text-anchor="middle">Loading...</text>';
+    
     const lastPriceEl = document.getElementById('kline-last-price');
-    if (lastPriceEl) lastPriceEl.innerText = '--';
+    if (lastPriceEl) {
+        lastPriceEl.innerText = '--';
+        lastPriceEl.style.color = '#fff';
+    }
+    
+    const highEl = document.getElementById('kline-high');
+    const lowEl = document.getElementById('kline-low');
+    if (highEl) highEl.innerText = '--';
+    if (lowEl) lowEl.innerText = '--';
+
+    const midPriceEl = document.getElementById('phone-mid-price');
+    if (midPriceEl) midPriceEl.innerText = '--';
+
+    const askContainer = document.getElementById('phone-asks');
+    const bidContainer = document.getElementById('phone-bids');
+    if (askContainer) askContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px; padding: 10px;">讀取中...</div>';
+    if (bidContainer) bidContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px; padding: 10px;">讀取中...</div>';
+    
+    const newsContainer = document.getElementById('phone-news-list');
+    if (newsContainer) newsContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px; padding: 10px;">正在加載即時新聞...</div>';
     
     // 滑入/切換為詳細 K 線圖視圖
     showKlineChartView();
@@ -1270,33 +1416,34 @@ async function fetchMaxAllTickers() {
         const res = await fetch('/api/proxy?path=/api/v2/tickers');
         if (res.ok) {
             const allTickers = await res.json();
+            markDataSource('行情列表', 'live');
             renderMarketList(allTickers, markets);
             return;
         }
+        throw new Error(`Tickers API 回傳狀態 ${res.status}`);
     } catch (e) {
-        console.warn('直接連線 MAX CORS 限制，改向 Java 後端或真實實時備用池取得即時行情:', e.message);
+        console.warn('無法取得 MAX 即時行情列表，改向後端 /api/market 查詢:', e.message);
     }
 
-    // 當直接連線遭瀏覽器 CORS 限制時，使用真實 MAX 市場當前真實動態價格池 (ETH ~$1927, BTC ~$64860, SOL ~$74)
-    const liveRealTickers = {
-        btcusdt: { last: "64862.31", open: "64230.00" },
-        ethusdt: { last: "1927.74", open: "1901.80" },
-        dogeusdt: { last: "0.1244", open: "0.1280" },
-        solusdt: { last: "74.41", open: "73.50" }
-    };
-    
-    // 向 Java 後端查詢實時報價補充
+    // P10：不再以任何硬編碼價格池填補。僅接受後端明示 dataSource === 'live' 的報價，
+    // 其餘一律顯示 '--' 並亮出警示橫幅。
+    const backendTickers = {};
     try {
-        const backendRes = await fetch('/api/market?market=ethusdt');
+        const backendRes = await fetch('/api/market?market=soltwd');
         if (backendRes.ok) {
             const bData = await backendRes.json();
-            if (bData.price) {
-                liveRealTickers.ethusdt.last = bData.price.toString();
+            if (bData.dataSource === 'live' && bData.price !== null && bData.price !== undefined) {
+                const open = bData.change24h ? Number(bData.price) / (1 + Number(bData.change24h) / 100) : Number(bData.price);
+                backendTickers.soltwd = { last: String(bData.price), open: String(open) };
+                if (!markets.includes('soltwd')) markets.push('soltwd');
             }
         }
-    } catch (err) {}
+    } catch (err) {
+        console.warn('後端 /api/market 查詢失敗:', err.message);
+    }
 
-    renderMarketList(liveRealTickers, markets);
+    markDataSource('行情列表', 'unavailable', '完整行情列表來源不可用，缺價項目顯示為 --');
+    renderMarketList(backendTickers, markets);
 }
 
 // 渲染自選商品行情列表
@@ -1306,58 +1453,87 @@ function renderMarketList(allTickers, markets) {
     
     let html = '';
     markets.forEach(m => {
-        const data = allTickers[m];
-        if (data) {
-            const last = Number(data.last);
-            const open = Number(data.open);
+        const data = allTickers ? allTickers[m] : null;
+        const last = data ? Number(data.last) : NaN;
+        const open = data ? Number(data.open) : NaN;
+        const hasQuote = Number.isFinite(last) && Number.isFinite(open) && open !== 0;
+
+        // 格式化顯示名稱如 BTC/USDT
+        const displayName = m.toUpperCase().replace('USDT', '/USDT').replace('TWD', '/TWD');
+
+        // P10：無可信報價時顯示 '--'，不得以任何替代數值填補
+        let priceCell = `<span style="font-family:monospace; font-weight:bold; font-size:14px; color:var(--danger);">${PRICE_UNAVAILABLE}</span>`;
+        let badgeCell = `<span class="market-badge" style="color:var(--danger); border:1px solid var(--danger); background:rgba(255,0,60,0.08);">${PRICE_UNAVAILABLE}</span>`;
+
+        if (hasQuote) {
             const changePct = ((last - open) / open * 100).toFixed(2);
             const isUp = changePct >= 0;
             const sign = isUp ? '+' : '';
             const badgeClass = isUp ? 'badge-up' : 'badge-down';
-            
-            // 格式化顯示名稱如 BTC/USDT
-            const displayName = m.toUpperCase().replace('USDT', '/USDT').replace('TWD', '/TWD');
             const formattedPrice = last.toLocaleString('en-US', { minimumFractionDigits: m.includes('doge') ? 4 : 1 });
-            
-            html += `
-                <div class="market-row" onclick="changeMarket('${m}')">
-                    <div style="display:flex; flex-direction:column; gap:4px;">
-                        <span style="font-weight:bold; font-size:13.5px; color:#fff;">${displayName}</span>
-                        <span style="font-size:10px; color:var(--text-muted);">MAX 交易所</span>
-                    </div>
-                    <div style="display:flex; align-items:center; gap:16px;">
-                        <span style="font-family:monospace; font-weight:bold; font-size:14px; color:#fff;">
-                            ${formattedPrice}
-                        </span>
-                        <span class="market-badge ${badgeClass}">${sign}${changePct}%</span>
-                    </div>
-                </div>
-            `;
+            priceCell = `<span style="font-family:monospace; font-weight:bold; font-size:14px; color:#fff;">${formattedPrice}</span>`;
+            badgeCell = `<span class="market-badge ${badgeClass}">${sign}${changePct}%</span>`;
         }
+
+        html += `
+            <div class="market-row" onclick="changeMarket('${m}')">
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <span style="font-weight:bold; font-size:13.5px; color:#fff;">${displayName}</span>
+                    <span style="font-size:10px; color:var(--text-muted);">${hasQuote ? 'MAX 交易所' : '⚠ 報價不可用'}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:16px;">
+                    ${priceCell}
+                    ${badgeCell}
+                </div>
+            </div>
+        `;
     });
     listContainer.innerHTML = html;
 }
 
 // 渲染自選行情首頁綜合快訊新聞
-function updateHomeNews() {
+async function updateHomeNews() {
     const homeNewsContainer = document.getElementById('home-news-container');
     if (!homeNewsContainer) return;
     
-    const nowStr = new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
-    homeNewsContainer.innerHTML = `
-        <div style="border-left: 2px solid var(--primary); padding-left: 6px;">
-            <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-            <div style="color:#fff; font-weight:bold;">【熱點】比特幣於 99K 大關橫盤整理，分析師指出巨鯨持倉未見鬆動</div>
-        </div>
-        <div style="border-top: 1px solid rgba(255,255,255,0.03); padding-top: 6px; border-left: 2px solid var(--secondary); padding-left: 6px; margin-top: 6px;">
-            <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-            <div style="color:#fff; font-weight:bold;">【鏈上】以太坊 Gas 費創歷史新低，Layer 2 交易活躍度顯著上升</div>
-        </div>
-        <div style="border-top: 1px solid rgba(255,255,255,0.03); padding-top: 6px; border-left: 2px solid var(--warning); padding-left: 6px; margin-top: 6px;">
-            <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-            <div style="color:#fff;">【熱點】DOGE 買盤在 0.12 美元上方堆疊，散戶 FOMO 情緒再度蠢動</div>
-        </div>
-    `;
+    try {
+        const response = await fetch('/api/news');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.news && data.news.length > 0) {
+                let html = '';
+                const colors = ['var(--primary)', 'var(--secondary)', 'var(--warning)', 'var(--success)', 'var(--danger)'];
+                
+                data.news.slice(0, 3).forEach((item, index) => {
+                    let dateStr = item.pubDate;
+                    try {
+                        const d = new Date(item.pubDate);
+                        if (!isNaN(d)) dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                    } catch(e) {}
+                    
+                    const borderColor = colors[index % colors.length];
+                    const marginTop = index === 0 ? '0' : '6px';
+                    const borderTop = index === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)';
+                    const paddingTop = index === 0 ? '0' : '6px';
+                    
+                    html += `
+                        <div style="border-top: ${borderTop}; padding-top: ${paddingTop}; border-left: 2px solid ${borderColor}; padding-left: 6px; margin-top: ${marginTop};">
+                            <span style="color:var(--text-muted); font-size: 9px;">${dateStr}</span>
+                            <a href="${item.link}" target="_blank" style="color:#fff; font-weight:bold; text-decoration: none; display: block; margin-top: 2px;">
+                                ${item.title}
+                            </a>
+                        </div>
+                    `;
+                });
+                homeNewsContainer.innerHTML = html;
+            } else {
+                homeNewsContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px;">目前沒有綜合快訊。</div>';
+            }
+        }
+    } catch (e) {
+        console.warn('載入綜合快訊失敗:', e);
+        homeNewsContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px;">載入新聞失敗，請稍後再試。</div>';
+    }
 }
 
 // K 線 Mock 資料生成器 (在斷網或 CORS 阻擋時提供精美走勢)
@@ -1387,61 +1563,43 @@ function generateMockKlineData(market, period = 5) {
     return mockData;
 }
 
-// 根據商品種類，動態更新相關快訊
-function updatePhoneNews(market) {
+// 根據商品種類，動態更新相關快訊 (使用真實資料 API)
+async function updatePhoneNews(market) {
     const newsContainer = document.getElementById('phone-news-list');
     if (!newsContainer) return;
     
-    const symbol = market.toUpperCase().replace('USDT', '').replace('TWD', '');
-    const nowStr = new Date().toLocaleTimeString('zh-TW', { hour12: false, hour: '2-digit', minute: '2-digit' });
-    
-    let newsHtml = '';
-    if (market.includes('btc')) {
-        newsHtml = `
-            <div style="border-left: 2px solid var(--primary); padding-left: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff; font-weight:bold;">BTC 突破歷史級阻力，鏈上大戶持續增持</div>
-            </div>
-            <div style="border-top: 1px solid rgba(255,255,255,0.03); padding-top: 6px; border-left: 2px solid var(--secondary); padding-left: 6px; margin-top: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff;">MAX 交易所 BTC 多空比上升至 1.8，多頭情緒強烈</div>
-            </div>
-        `;
-    } else if (market.includes('eth')) {
-        newsHtml = `
-            <div style="border-left: 2px solid var(--primary); padding-left: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff; font-weight:bold;">以太坊布拉格升級測試網啟動，Gas 費降至新低</div>
-            </div>
-            <div style="border-top: 1px solid rgba(255,255,255,0.03); padding-top: 6px; border-left: 2px solid var(--secondary); padding-left: 6px; margin-top: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff;">ETH 現貨 ETF 資金流入創單週新高，巨鯨建倉速度加快</div>
-            </div>
-        `;
-    } else if (market.includes('doge')) {
-        newsHtml = `
-            <div style="border-left: 2px solid var(--primary); padding-left: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff; font-weight:bold;">馬斯克再度發推提及狗狗幣，DOGE 交易量突破 2 億美元</div>
-            </div>
-            <div style="border-top: 1px solid rgba(255,255,255,0.03); padding-top: 6px; border-left: 2px solid var(--secondary); padding-left: 6px; margin-top: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff;">DOGE 鏈上交易筆數激增，散戶 FOMO 情緒指數達極度貪婪</div>
-            </div>
-        `;
-    } else {
-        newsHtml = `
-            <div style="border-left: 2px solid var(--primary); padding-left: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff; font-weight:bold;">${symbol} 即時波動率顯著上升，盤中交易量放大 20%</div>
-            </div>
-            <div style="border-top: 1px solid rgba(255,255,255,0.03); padding-top: 6px; border-left: 2px solid var(--secondary); padding-left: 6px; margin-top: 6px;">
-                <span style="color:var(--text-muted); font-size: 9px;">${nowStr}</span>
-                <div style="color:#fff;">量化基金大額掃貨 ${symbol}，技術指標突破前高</div>
-            </div>
-        `;
+    try {
+        const symbol = market.toUpperCase().replace('USDT', '').replace('TWD', '');
+        const response = await fetch(`/api/news?market=${symbol}`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data.news && data.news.length > 0) {
+                let html = '';
+                data.news.forEach(item => {
+                    let dateStr = item.pubDate;
+                    try {
+                        const d = new Date(item.pubDate);
+                        if (!isNaN(d)) dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                    } catch(e) {}
+                    
+                    html += `
+                        <div style="padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
+                            <a href="${item.link}" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: bold; display: block; margin-bottom: 2px;">
+                                ${item.title}
+                            </a>
+                            <span style="color: var(--text-muted); font-size: 9px;">${dateStr}</span>
+                        </div>
+                    `;
+                });
+                newsContainer.innerHTML = html;
+            } else {
+                newsContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px;">目前沒有此幣種相關的新聞。</div>';
+            }
+        }
+    } catch (e) {
+        console.warn('載入專屬新聞快訊失敗:', e);
+        newsContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px;">載入新聞失敗，請稍後再試。</div>';
     }
-    newsContainer.innerHTML = newsHtml;
 }
 
 function changePeriod(period, btnElement) {
