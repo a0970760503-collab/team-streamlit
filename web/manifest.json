@@ -1,0 +1,21 @@
+{
+  "name": "AI 投資委員會",
+  "short_name": "AI 委員會",
+  "description": "提供即時行情與 AI 委員會分析的看盤 App",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#030303",
+  "theme_color": "#030303",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

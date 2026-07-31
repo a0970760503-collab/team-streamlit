@@ -6,7 +6,7 @@ import java.nio.file.StandardOpenOption;
 public class FileHandler {
 
     /**
-     * 讀取檔案內容並轉為字串 (用來讀取詠喬產出的 agent_report.json)
+     * 讀取檔案內容並轉為字串 (用來讀取UserC產出的 agent_report.json)
      */
     public static String readFile(String filePath) {
         try {
@@ -20,7 +20,7 @@ public class FileHandler {
     }
 
     /**
-     * 將處理完的 JSON 字串回存成新檔案 (用來傳給美妃的前端)
+     * 將處理完的 JSON 字串回存成新檔案 (用來傳給UserD的前端)
      */
     public static void saveFile(String data, String filePath) {
         try {

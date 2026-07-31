@@ -1,0 +1,19 @@
+{
+  "enabled": true,
+  "name": "紅線靜態檢查",
+  "description": "Python 或 web 檔案儲存後自動執行 scripts/check_guardrails.py，攔截違反開發紅線的變更",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.py",
+      "web/**/*.js",
+      "web/**/*.html",
+      "web/**/*.css"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "剛剛有檔案被修改。請在專案根目錄執行：\n\npython scripts/check_guardrails.py\n\n處理規則：\n1. 退出碼 0：只回覆一行「紅線檢查通過」，不要做任何其他事，不要修改檔案。\n2. 發現 P5（encoding）違規：直接補上 encoding='utf-8'（subprocess 另加 errors='replace'），改完重跑一次檢查器確認通過。\n3. 發現 P1／P2／P3／P4 違規：這是架構紅線，禁止自行修改架構或刪除依賴。列出違規清單並明確告知使用者需回報 System Integrator 裁定。\n4. 不要為了讓檢查器通過而修改 scripts/check_guardrails.py 本身。"
+  }
+}

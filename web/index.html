@@ -2,7 +2,11 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#030303">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <link rel="manifest" href="manifest.json">
     <title>AI 投資委員會 - 完整辯論流程</title>
     <style>
         :root {
@@ -329,6 +333,42 @@
         .success-overlay { position: absolute; inset: 0; background: rgba(9,9,11,0.95); backdrop-filter: blur(5px); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 20; }
         .success-icon { font-size: 64px; color: var(--success); margin-bottom: 16px; animation: scaleUp 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         @keyframes scaleUp { 0% { transform: scale(0); } 100% { transform: scale(1); } }
+
+        /* Mobile Responsive Override */
+        @media (max-width: 600px) {
+            body { 
+                height: 100dvh; 
+                min-height: 100dvh; 
+                align-items: flex-start; 
+                overflow: hidden;
+            }
+            .phone-frame {
+                width: 100vw;
+                height: 100dvh;
+                max-height: 100dvh;
+                border: none;
+                border-radius: 0;
+                box-shadow: none;
+            }
+            .app-container {
+                height: 100%;
+                width: 100%;
+                bottom: 0;
+                left: 0;
+                border-radius: 0;
+            }
+            #floating-chat-btn {
+                bottom: calc(20px + env(safe-area-inset-bottom, 20px));
+                right: 20px;
+            }
+            /* Add extra padding at the bottom of the news list so the floating button doesn't cover the last news item */
+            #home-news-container {
+                padding-bottom: 80px;
+            }
+            #phone-news-list {
+                padding-bottom: 80px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -613,5 +653,18 @@
 </div>
 
 <script src="app.js" defer></script>
+<script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('service-worker.js')
+                .then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                })
+                .catch(err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+        });
+    }
+</script>
 </body>
 </html>
