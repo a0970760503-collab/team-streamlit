@@ -1,4 +1,24 @@
-setwd("C:/Users/a0970/OneDrive/桌面/黑客松")
+# =====================================================================
+# AI Investment Committee - Agent Report Updater
+# 路徑由腳本自身位置推導，可從任何 cwd 執行
+# =====================================================================
+
+args_all <- commandArgs(trailingOnly = FALSE)
+file_arg <- sub("^--file=", "", args_all[grep("^--file=", args_all)])
+script_dir <- if (length(file_arg) > 0) dirname(normalizePath(file_arg)) else getwd()
+PROJECT_ROOT <- normalizePath(file.path(script_dir, ".."))
+
+# 路徑常數（data/ 位於 team-streamlit 之外的工作區根目錄）
+REPORT_PATH <- file.path(PROJECT_ROOT, "web", "agent_report.json")
+CSV_PATH    <- file.path(PROJECT_ROOT, "..", "data", "MaiCoin_最近一年份出入金及交易紀錄.csv")
+ENV_PATH    <- file.path(PROJECT_ROOT, ".env")
+
+# 金鑰改由 .env 載入，不得寫死在原始碼
+if (file.exists(ENV_PATH)) readRenviron(ENV_PATH)
+CMC_API_KEY <- Sys.getenv("CMC_API_KEY")
+if (nchar(CMC_API_KEY) == 0) {
+  stop("CMC_API_KEY 未設定。請複製 .env.example 為 .env 並填入 CoinMarketCap API Key。")
+}
 
 library(httr)
 library(jsonlite)
@@ -77,18 +97,11 @@ if(latest_rsi > 70){
 
 technical_score <- round(latest_rsi)
 
-write_json(
-  agent_report,
-  "output/agent_report.json",
-  pretty = TRUE,
-  auto_unbox = TRUE
-)
-
 # CoinMarketCap API
 res <- GET(
   "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest",
   add_headers(
-    "X-CMC_PRO_API_KEY" = "833496923b49438ab17bea657a023635"
+    "X-CMC_PRO_API_KEY" = CMC_API_KEY
   )
 )
 
@@ -115,7 +128,7 @@ market_agent <- list(
 fg_res <- GET(
   "https://pro-api.coinmarketcap.com/v3/fear-and-greed/latest",
   add_headers(
-    "X-CMC_PRO_API_KEY" = "833496923b49438ab17bea657a023635"
+    "X-CMC_PRO_API_KEY" = CMC_API_KEY
   )
 )
 
@@ -205,15 +218,20 @@ sentiment_agent <- list(
 
 )
 
-# 讀取既有 JSON
+# 讀取既有 JSON（首次執行時檔案可能尚未存在）
 
-agent_report <- read_json(
-  "output/agent_report.json",
-  simplifyVector = TRUE
-)
+agent_report <- if (file.exists(REPORT_PATH)) {
+  read_json(REPORT_PATH, simplifyVector = TRUE)
+} else {
+  list()
+}
+
+if (!file.exists(CSV_PATH)) stop(paste("找不到交易紀錄 CSV：", CSV_PATH))
 
 trade <- read.csv(
-  "MaiCoin_最近一年份出入金及交易紀錄.csv"
+  CSV_PATH,
+  fileEncoding = "UTF-8",
+  stringsAsFactors = FALSE
 )
 
 trade_coin <- subset(
@@ -273,6 +291,72 @@ if(personality == "保守型"){
 print(risk_score)
 
 print(personality)
+
+# Risk Agent Score（風險越低分數越高）
+
+risk_agent_score <- 100 - risk_score
+
+# Behavior Agent Score
+# 以移動平均成本法逐幣種追蹤持倉，計算已實現平倉勝率（base R）
+
+trade_hist <- trade_coin
+trade_hist$price     <- as.numeric(trade_hist$price)
+trade_hist$change    <- as.numeric(trade_hist$change)
+trade_hist$timestamp <- as.numeric(trade_hist$timestamp)
+trade_hist <- trade_hist[order(trade_hist$timestamp), ]
+
+holding_qty   <- list()
+avg_cost      <- list()
+closed_trades <- 0
+win_trades    <- 0
+
+for (i in seq_len(nrow(trade_hist))) {
+
+  coin <- as.character(trade_hist$currency[i])
+  act  <- as.character(trade_hist$action[i])
+  px   <- trade_hist$price[i]
+  qty  <- abs(trade_hist$change[i])
+
+  if (!(coin %in% names(holding_qty))) {
+    holding_qty[[coin]] <- 0
+    avg_cost[[coin]]    <- 0
+  }
+
+  if (is.na(px) || is.na(qty)) next
+
+  if (act == "buy") {
+
+    total_qty <- holding_qty[[coin]] + qty
+
+    if (total_qty > 0) {
+      avg_cost[[coin]] <-
+        (avg_cost[[coin]] * holding_qty[[coin]] + px * qty) / total_qty
+    }
+
+    holding_qty[[coin]] <- total_qty
+
+  } else if (act == "sell") {
+
+    if (avg_cost[[coin]] > 0) {
+
+      realized <- (px - avg_cost[[coin]]) * qty
+
+      closed_trades <- closed_trades + 1
+
+      if (realized > 0) win_trades <- win_trades + 1
+    }
+
+    holding_qty[[coin]] <- max(0, holding_qty[[coin]] - qty)
+  }
+}
+
+win_rate <- if (closed_trades > 0) win_trades / closed_trades else 0.5
+
+behavior_agent_score <- round(win_rate * 100)
+
+print(win_rate)
+
+print(behavior_agent_score)
 
 agent_report <- agent_report[
   !names(agent_report) %in% c("1","2","3","4")
@@ -369,7 +453,8 @@ agent_report$chairman_input <- chairman_input
 agent_report$user_profile <- list(
   personality = personality,
   favorite_coin = favorite_coin,
-  risk_score = risk_score
+  risk_score = risk_score,
+  win_rate = round(win_rate,4)
 )
 
 agent_report$chairman_prompt <- paste(
@@ -460,7 +545,7 @@ agent_report$updated_time <- format(
 # 寫回
 write_json(
   agent_report,
-  "output/agent_report.json",
+  REPORT_PATH,
   pretty = TRUE,
   auto_unbox = TRUE
 )
