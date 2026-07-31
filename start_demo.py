@@ -98,10 +98,33 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         ticker = fetch_max_ticker("soltwd")
         price = ticker["price"]
         change24h = ticker["change24h"]
-        rsi = round(45.0 + (random.random() * 20 - 10), 1)
-        mdd = 12.5
-        risk_score = 65
-        signal = "BUY" if rsi < 40 else ("SELL" if rsi > 70 else "HOLD")
+        
+        # 讀取真實 R 語言跑出的 agent_report.json
+        try:
+            report_path = os.path.join(base_dir, "web", "agent_report.json")
+            with open(report_path, "r", encoding="utf-8") as f:
+                agent_data = json.load(f)
+                
+            rsi = agent_data["technical_agent"]["rsi"]
+            signal = agent_data["technical_agent"]["signal"]
+            risk_score = int(agent_data["investment_committee"]["risk_score"])
+            buy_votes = int(agent_data["investment_committee"]["committee_score"])
+            personality = agent_data["user_profile"]["personality"]
+            win_rate = float(agent_data["user_profile"].get("win_rate", 0.68)) * 100
+            sentiment_score = int(agent_data["sentiment_agent"].get("sentiment_score", 50))
+            fear_greed = int(agent_data["sentiment_agent"].get("fear_greed", 50))
+            behavior_score = int(agent_data["investment_committee"].get("behavior_score", 80))
+        except Exception as e:
+            print(f"Failed to read agent_report.json, falling back to mock data: {e}")
+            rsi = round(45.0 + (random.random() * 20 - 10), 1)
+            signal = "BUY" if rsi < 40 else ("SELL" if rsi > 70 else "HOLD")
+            risk_score = 65
+            buy_votes = random.randint(65, 75)
+            personality = "波段型"
+            win_rate = 68.0
+            sentiment_score = 72
+            fear_greed = 68
+            behavior_score = 80
 
         debates = [
             {
@@ -117,30 +140,29 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "role": "風控面",
                 "avatar": "🛡️",
                 "score": str(risk_score),
-                "signal": "HOLD",
-                "text": f"關注歷史波動！近 100 筆 K 線計算之最大回撤率 (MDD) 為 {mdd}%，綜合風險評分為 {risk_score}/100。建議嚴格控制倉位，不可盲目追高！"
+                "signal": "HOLD" if risk_score > 50 else "BUY",
+                "text": f"關注歷史波動！綜合風險評分為 {risk_score}/100。建議嚴格控制倉位，不可盲目追高！"
             },
             {
                 "agent": "Sentiment Agent (情緒分析師)",
                 "role": "輿情面",
                 "avatar": "💬",
-                "score": "72",
-                "signal": "BUY",
-                "text": "CoinMarketCap 恐慌與貪婪指數為 68 (貪婪)。社群討論度在 Threads 與 X 上偏向正面，市場情緒偏看多。"
+                "score": str(sentiment_score),
+                "signal": "BUY" if sentiment_score > 50 else "HOLD",
+                "text": f"CoinMarketCap 恐慌與貪婪指數為 {fear_greed}。社群討論度在 Threads 與 X 上偏向正面，市場情緒偏看多。"
             },
             {
                 "agent": "Behavior Agent (人格分析師)",
                 "role": "用戶行為",
                 "avatar": "👤",
-                "score": "80",
-                "signal": "BUY",
-                "text": "解析帳戶歷史 1 萬筆交易，用戶屬於「波段型」偏好，過往在波段回檔時進場勝率達 68%。契合當前佈局時機。"
+                "score": str(behavior_score),
+                "signal": "BUY" if behavior_score > 50 else "HOLD",
+                "text": f"解析帳戶歷史交易，用戶屬於「{personality}」偏好，過往在此情境進場勝率達 {win_rate:.1f}%。契合當前佈局時機。"
             }
         ]
 
-        buy_votes = random.randint(65, 75)
-        hold_votes = 20
-        sell_votes = 100 - buy_votes - hold_votes
+        hold_votes = min(20, 100 - buy_votes)
+        sell_votes = max(0, 100 - buy_votes - hold_votes)
 
         res = {
             "currentPrice": price,
