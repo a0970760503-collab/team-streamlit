@@ -1,0 +1,11 @@
+{
+  "hook": "pre-commit",
+  "enabled": true,
+  "actions": [
+    {
+      "type": "verify_encoding",
+      "target": "*.py",
+      "expected": "utf-8"
+    }
+  ]
+}
