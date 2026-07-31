@@ -11,6 +11,7 @@ import urllib.parse
 from datetime import datetime
 import random
 import threading
+import xml.etree.ElementTree as ET
 
 base_dir = os.path.dirname(os.path.abspath(__file__))
 web_index = os.path.join(base_dir, "web", "index.html")
@@ -74,6 +75,8 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 self.handle_market(parsed.query)
             elif path == "/api/proxy":
                 self.handle_proxy(parsed.query)
+            elif path == "/api/news":
+                self.handle_news()
             elif path == "/test":
                 self.respond_json({"status": "ok", "message": "API Server Running"})
             else:
@@ -230,6 +233,32 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             "message": "✅ 雙向數據流下單成功！訂單已由 MAX API 模擬引擎撮合，並更新您的個人資產配置。"
         }
         self.respond_json(res)
+
+    def handle_news(self):
+        url = "https://cointelegraph.com/rss"
+        try:
+            req = urllib.request.urlopen(url, timeout=5)
+            xml_data = req.read().decode('utf-8')
+            root = ET.fromstring(xml_data)
+            items = []
+            for item in root.findall('./channel/item')[:5]:
+                title = item.find('title').text if item.find('title') is not None else ''
+                link = item.find('link').text if item.find('link') is not None else ''
+                pubDate = item.find('pubDate').text if item.find('pubDate') is not None else ''
+                items.append({
+                    "title": title,
+                    "link": link,
+                    "pubDate": pubDate
+                })
+            self.respond_json({"status": "success", "news": items})
+        except Exception as e:
+            # Fallback data if RSS fetch fails
+            fallback = [
+                {"title": "BTC 突破 96,000 美元，創下歷史新高", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+                {"title": "以太坊現貨 ETF 獲准上市", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+                {"title": "Solana 網路升級成功，交易速度翻倍", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+            ]
+            self.respond_json({"status": "fallback", "news": fallback, "error": str(e)})
 
     def respond_json(self, data):
         self.send_response(200)

@@ -1,23 +1,82 @@
 {
   "technical_agent": {
-    "rsi": 72.5,
-    "signal": "BUY"
+    "coin": "SOL",
+    "rsi": 43.33,
+    "ma5": 2395.38,
+    "ma20": 2409.95,
+    "signal": "HOLD"
   },
   "sentiment_agent": {
-    "fear_greed": 82,
-    "sentiment": "BUY",
-    "sentiment_score": 88
+    "sentiment_score": 50,
+    "sentiment": "Neutral",
+    "source": "CoinMarketCap",
+    "change_24h": 0.34,
+    "fear_greed": 36,
+    "fear_greed_classification": "Fear"
   },
   "investment_committee": {
-    "technical_score": 75,
-    "sentiment_score": 88,
-    "risk_score": 15,
-    "behavior_score": 25,
-    "committee_score": 81.2,
-    "final_action": "BUY"
+    "technical_score": 43,
+    "sentiment_score": 50,
+    "risk_score": 10,
+    "behavior_score": 64,
+    "committee_score": 42
   },
   "llm_input": {
-    "price_usd": "99,230.50",
-    "change_24h": "+6.8%"
-  }
+    "personality": "高頻交易型",
+    "favorite_coin": "sol",
+    "market_rank": 7,
+    "price_usd": 73.61,
+    "risk_score": 90,
+    "rsi": 43.33,
+    "ma5": 2395.38,
+    "ma20": 2409.95,
+    "signal": "HOLD",
+    "change_24h": 0.34,
+    "fear_greed": 36,
+    "fear_greed_classification": "Fear",
+    "sentiment": "Neutral",
+    "committee_score": 42,
+    "updated_time": "2026-07-31 16:00:49"
+  },
+  "market_agent": {
+    "coin": "SOL",
+    "rank": 7,
+    "price_usd": 73.61,
+    "market_cap": 42663772654,
+    "volume_24h": 1605389809,
+    "change_24h": 0.34
+  },
+  "chairman_input": {
+    "technical_agent": {
+      "score": 43,
+      "rsi": 43.33,
+      "ma5": 2395.38,
+      "ma20": 2409.95,
+      "signal": "HOLD"
+    },
+    "sentiment_agent": {
+      "score": 50,
+      "sentiment": "Neutral",
+      "fear_greed": 36
+    },
+    "risk_agent": {
+      "score": 10
+    },
+    "behavior_agent": {
+      "score": 64
+    },
+    "committee_score": 42
+  },
+  "user_profile": {
+    "personality": "高頻交易型",
+    "favorite_coin": "sol",
+    "risk_score": 90,
+    "win_rate": 0.6445
+  },
+  "chairman_prompt": "你是AI投資委員會主席。 請根據以下Agent分析結果做出最終投資決策。 Technical Score: 43 Sentiment Score: 50 Risk Score: 10 Behavior Score: 64 Committee Score: 42",
+  "recommendation": {
+    "confidence": 42,
+    "summary": "SOL RSI 43.33 市場情緒 Neutral Committee Score 42"
+  },
+  "updated_time": "2026-07-31 16:00:49"
 }

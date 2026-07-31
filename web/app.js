@@ -107,8 +107,46 @@ async function fetchData() {
 // 監聽網頁載入，自動初始化所有資料與真實圖表
 window.addEventListener('DOMContentLoaded', () => {
     fetchData();
+    fetchNews();
     showDashboardHomeView();
 });
+
+// 實作新聞讀取 API
+async function fetchNews() {
+    try {
+        const response = await fetch('/api/news');
+        if (response.ok) {
+            const data = await response.json();
+            const newsContainer = document.getElementById('home-news-container');
+            const phoneNewsContainer = document.getElementById('phone-news-list');
+            
+            if (data.news && data.news.length > 0) {
+                let html = '';
+                data.news.forEach(item => {
+                    // Try to format date
+                    let dateStr = item.pubDate;
+                    try {
+                        const d = new Date(item.pubDate);
+                        if (!isNaN(d)) dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                    } catch(e) {}
+                    
+                    html += `
+                        <div style="padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <a href="${item.link}" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: bold; display: block; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                ${item.title}
+                            </a>
+                            <span style="color: var(--text-muted); font-size: 9px;">${dateStr}</span>
+                        </div>
+                    `;
+                });
+                if (newsContainer) newsContainer.innerHTML = html;
+                if (phoneNewsContainer) phoneNewsContainer.innerHTML = html;
+            }
+        }
+    } catch (e) {
+        console.warn('載入新聞快訊失敗:', e);
+    }
+}
 
 // 前端獨立邏輯與動態拼接生成器
 function generateDynamicSpeech(agent, data) {
