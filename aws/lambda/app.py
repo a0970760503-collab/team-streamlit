@@ -288,17 +288,71 @@ def request_analysis(market, period, technical, news):
 
 
 def request_debate_reply(market, user_message):
-    market_data = fetch_ticker(market)
-    prompt = {
-        "market": market.upper(), "market_data": market_data, "user_message": user_message,
-        "output_contract": {
-            "technical": "Traditional Chinese, 50-90 words; directly discuss the user's point using available market data only.",
-            "risk": "Traditional Chinese, 50-90 words; state uncertainty and risk controls without trade instructions.",
-            "chair": "Traditional Chinese, 60-110 words; fairly synthesise the user and agents, research only, no buy/sell instruction."
-        }
-    }
-    result = request_bedrock_json("You are a careful investment research committee. Treat the user as a participant. Use only supplied JSON, return valid JSON only, and do not give personalized financial advice, trading instructions, or guarantees.", prompt, 700, 0.3)
-    return {"technical": str(result.get("technical", ""))[:1200], "risk": str(result.get("risk", ""))[:1200], "chair": str(result.get("chair", ""))[:1400]}
+    """Run the committee in Mode B: Bedrock chooses from a small research-only tool box."""
+    tool_specs = [
+        {"toolSpec": {"name": "get_max_ticker", "description": "取得 MAX 交易所公開即時報價、24 小時漲跌與成交量。",
+                      "inputSchema": {"json": {"type": "object", "properties": {"market": {"type": "string", "description": "MAX 市場代號，例如 btcusdt"}}}}}},
+        {"toolSpec": {"name": "get_technical_snapshot", "description": "取得 MAX 公開 K 線並計算 RSI、MACD、SMA 與趨勢摘要。",
+                      "inputSchema": {"json": {"type": "object", "properties": {"market": {"type": "string"}, "period": {"type": "integer", "description": "K 線分鐘數，可為 15、60、240 或 1440"}}}}}},
+        {"toolSpec": {"name": "get_crypto_news", "description": "取得與該資產相關的公開加密快訊標題，僅供研究背景。",
+                      "inputSchema": {"json": {"type": "object", "properties": {"market": {"type": "string"}}}}}},
+    ]
+
+    def run_tool(name, arguments):
+        arguments = arguments if isinstance(arguments, dict) else {}
+        try:
+            requested_market = validate_market(arguments.get("market") or market)
+            if name == "get_max_ticker":
+                return {"source": "MAX public API", "market": requested_market.upper(), "ticker": fetch_ticker(requested_market)}
+            if name == "get_technical_snapshot":
+                try:
+                    period = int(arguments.get("period", 60))
+                except (TypeError, ValueError):
+                    period = 60
+                if period not in {15, 60, 240, 1440}:
+                    period = 60
+                raw = fetch_proxy({"path": "/api/v2/k", "market": requested_market, "period": period, "limit": 120})
+                candles = [[float(item[index]) for index in range(6)] for item in raw if isinstance(item, list) and len(item) >= 6]
+                return {"source": "MAX public API", "market": requested_market.upper(), "periodMinutes": period, "indicators": calculate_indicators(candles)}
+            if name == "get_crypto_news":
+                return {"source": "Cointelegraph RSS", "market": requested_market.upper(), "articles": [{"title": item["title"], "published": item["pubDate"]} for item in fetch_news(requested_market)[:6]]}
+            return {"error": "Unknown research tool."}
+        except (ValueError, TypeError, KeyError, IndexError, json.JSONDecodeError, urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError, OSError) as exc:
+            return {"error": f"Research tool unavailable: {type(exc).__name__}"}
+
+    system = """You are a careful Traditional-Chinese investment research committee in Mode B (tool use). You may autonomously use only the supplied public research tools when useful. Do not claim to use a tool you did not call. Never give personalized financial advice, buy/sell instructions, execution steps, guarantees, or wallet/account guidance. After tool use, return valid JSON only with keys technical, risk, chair. Each value must be Traditional Chinese; chair must state that the content is educational research, not investment advice."""
+    prompt = {"market": market.upper(), "participant_message": user_message,
+              "task": "Discuss the participant's point. Decide yourself whether public research tools are useful before replying.",
+              "output_contract": {"technical": "50-110 words", "risk": "50-110 words", "chair": "70-130 words"}}
+    messages = [{"role": "user", "content": [{"text": json.dumps(prompt, ensure_ascii=False)}]}]
+    tool_calls = []
+    client = boto3.client("bedrock-runtime")
+    try:
+        for _ in range(4):
+            response = client.converse(
+                modelId=os.environ.get("BEDROCK_MODEL", "us.amazon.nova-2-lite-v1:0"), system=[{"text": system}], messages=messages,
+                inferenceConfig={"maxTokens": 900, "temperature": 0.25}, toolConfig={"tools": tool_specs, "toolChoice": {"auto": {}}},
+            )
+            assistant_message = response["output"]["message"]
+            messages.append(assistant_message)
+            uses = [item.get("toolUse") for item in assistant_message.get("content", []) if isinstance(item, dict) and item.get("toolUse")]
+            if not uses:
+                text = "".join(item.get("text", "") for item in assistant_message.get("content", []) if isinstance(item, dict))
+                result = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+                replies = {"technical": str(result.get("technical", ""))[:1200], "risk": str(result.get("risk", ""))[:1200], "chair": str(result.get("chair", ""))[:1400]}
+                if not all(replies.values()):
+                    raise ValueError("Bedrock tool-use response was incomplete.")
+                return replies, tool_calls
+            tool_results = []
+            for use in uses:
+                name, arguments = use.get("name", ""), use.get("input", {})
+                tool_calls.append(name)
+                tool_results.append({"toolResult": {"toolUseId": use.get("toolUseId", ""), "content": [{"json": run_tool(name, arguments)}], "status": "success"}})
+            messages.append({"role": "user", "content": tool_results})
+    except (BotoCoreError, ClientError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        print(f"BedrockToolUseFailed type={type(exc).__name__} message={exc}")
+        raise RuntimeError("Amazon Bedrock tool-use request failed; review the Lambda CloudWatch log for the error type.") from exc
+    raise RuntimeError("Amazon Bedrock did not finish the research-tool conversation.")
 
 
 def normalise_behavior_profile(value):
@@ -442,12 +496,13 @@ def lambda_handler(event, _context):
             message = str(payload.get("message", "")).strip()
             if not (1 <= len(message) <= 700): raise ValueError("Discussion message must be 1 to 700 characters.")
             if demo_mode_enabled():
-                replies, mode = demo_debate_reply(market, message), "demo"
+                replies, mode, tool_calls = demo_debate_reply(market, message), "demo", []
             else:
                 try:
-                    replies, mode = request_debate_reply(market, message), "ai"
+                    replies, tool_calls = request_debate_reply(market, message)
+                    mode = "tool-use"
                 except RuntimeError:
-                    replies, mode = demo_debate_reply(market, message), "demo"
+                    replies, mode, tool_calls = demo_debate_reply(market, message), "demo", []
             # Keep the concise API used by the serverless UI and also provide the
             # debate schema expected by the latest repository interface.
             debates = [
@@ -458,6 +513,7 @@ def lambda_handler(event, _context):
             return json_response(200, {
                 "replies": replies, "debates": debates,
                 "summary": replies.get("chair", ""), "final_action": "HOLD", "mode": mode,
+                "toolCalls": tool_calls,
                 "generatedAt": datetime.now(timezone.utc).isoformat(),
             })
         return json_response(404, {"error": "Endpoint not found."})

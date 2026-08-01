@@ -551,12 +551,25 @@ async function renderChatMessage(line) {
     await new Promise(r => setTimeout(r, 300));
 }
 
+async function renderToolUseStatus(toolCalls) {
+    if (!Array.isArray(toolCalls) || !toolCalls.length) return;
+    const labels = {
+        get_max_ticker: 'MAX 即時報價',
+        get_technical_snapshot: 'K 線技術摘要',
+        get_crypto_news: '加密快訊'
+    };
+    const used = [...new Set(toolCalls)].map(name => labels[name] || name).join('、');
+    await renderChatMessage({ type: 'sys', text: `🧰 模式 B｜AI 委員會自主使用研究工具：${used}` });
+}
+
 async function startAiDebate(initialUserText = null) {
     document.getElementById('tab-btn-debate').style.display = 'block';
     switchTab('debate');
     const chatBox = document.getElementById('debate-messages-container');
     const actions = document.getElementById('decision-btn-area');
     if (!chatBox || !actions) return;
+    const systemNotice = document.getElementById('debate-sys-msg');
+    if (systemNotice) systemNotice.innerHTML = '<span>🧰 模式 B：AI 委員會可自主呼叫公開研究工具</span>';
     chatBox.replaceChildren();
     actions.style.display = 'none';
     debateFinished = false;
@@ -574,6 +587,7 @@ async function startAiDebate(initialUserText = null) {
         if (!response.ok) throw new Error(data.error || 'AI 委員會暫時無法回應。');
         const replies = Array.isArray(data.debates) ? data.debates : [];
         if (!replies.length) throw new Error('AI 回應格式不完整。');
+        await renderToolUseStatus(data.toolCalls);
         for (const reply of replies) {
             debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
             await renderChatMessage(reply);
@@ -683,6 +697,7 @@ async function sendDebateMsg() {
         const resData = await response.json();
 
         if (resData && resData.debates) {
+            await renderToolUseStatus(resData.toolCalls);
             for (let reply of resData.debates) {
                 debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
                 await renderChatMessage(reply);
