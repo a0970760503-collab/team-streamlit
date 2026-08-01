@@ -504,6 +504,8 @@ function generateDynamicSpeech(agent, data) {
 
 let debateHistory = [];
 let latestChairDecision = { summary: '', action: 'HOLD' };
+let latestCommitteeRound = {};
+let pendingCommitteePrompt = null;
 
 // 展示模式採用固定劇本；使用者仍可在下方「加入討論」提出自己的觀點。
 const DEMO_COMMITTEE_SCRIPT = [
@@ -576,6 +578,21 @@ function researchAction(value) {
     return ['BUY', 'SELL', 'HOLD'].includes(action) ? action : 'HOLD';
 }
 
+function updateCommitteeSummary(data, chair) {
+    const debates = Array.isArray(data?.debates) ? data.debates : [];
+    const findText = agent => debates.find(item => item.agent === agent)?.text || '本輪未取得該委員的研究摘要。';
+    const fields = { tech: 'summary-tech', risk: 'summary-risk', sent: 'summary-sent', behav: 'summary-behav' };
+    Object.entries(fields).forEach(([agent, id]) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = findText(agent);
+    });
+    const summary = document.getElementById('chair-summary-content');
+    if (summary) summary.textContent = chair?.text || '主席統整內容尚未完成。';
+    const action = document.getElementById('summary-action');
+    if (action) action.textContent = `研究決策：${researchAction(data?.final_action)}`;
+    latestCommitteeRound = { debates, chair: chair?.text || '', action: researchAction(data?.final_action) };
+}
+
 async function renderChairDecision(data) {
     const chair = Array.isArray(data.debates)
         ? data.debates.find(reply => reply.agent === 'chair' && reply.text)
@@ -586,6 +603,7 @@ async function renderChairDecision(data) {
     debateHistory.push({ name: chair.name, text: chair.text, role: 'agent' });
     await renderChatMessage(chair);
     latestChairDecision = { summary: chair.text, action: researchAction(data.final_action) };
+    updateCommitteeSummary(data, chair);
     if (!globalData) globalData = JSON.parse(JSON.stringify(mockData));
     globalData.investment_committee = {
         ...(globalData.investment_committee || {}),
@@ -596,6 +614,7 @@ async function renderChairDecision(data) {
 }
 
 async function startAiDebate(initialUserText = null) {
+    nav('page1');
     document.getElementById('tab-btn-debate').style.display = 'block';
     switchTab('debate');
     const chatBox = document.getElementById('debate-messages-container');
@@ -608,8 +627,10 @@ async function startAiDebate(initialUserText = null) {
     debateFinished = false;
     debateHistory = [];
     latestChairDecision = { summary: '', action: 'HOLD' };
+    latestCommitteeRound = {};
 
     const prompt = String(initialUserText || `請以繁體中文就 ${currentTopic || currentMarket.toUpperCase()} 說明目前可觀察的市場資訊、主要不確定性與研究重點。內容僅供教育與研究參考，不構成投資建議。`).trim();
+    pendingCommitteePrompt = null;
     debateHistory.push({ name: '使用者', text: prompt, role: 'user' });
     await renderChatMessage({ agent: 'user', icon: '🗣️', name: '使用者', color: '#fff', text: prompt });
     try {
@@ -637,7 +658,8 @@ async function startAiDebate(initialUserText = null) {
 }
 
 async function startDebate(initialUserText = null) {
-    if (aiModeEnabled()) return startAiDebate(initialUserText);
+    const committeePrompt = initialUserText || pendingCommitteePrompt;
+    if (aiModeEnabled()) return startAiDebate(committeePrompt);
     // 顯示 Tab 並且切換過去
     document.getElementById('tab-btn-debate').style.display = 'block';
     switchTab('debate');
@@ -668,6 +690,11 @@ async function startDebate(initialUserText = null) {
         debateHistory.push({ name: line.name, text: line.text, role: "agent" });
         await renderChatMessage(line);
     }
+    const scriptedChair = scriptLines.find(line => line.agent === 'chair');
+    if (scriptedChair) {
+        updateCommitteeSummary({ debates: scriptLines, final_action: 'HOLD' }, scriptedChair);
+        latestChairDecision = { summary: scriptedChair.text, action: 'HOLD' };
+    }
 
     debateFinished = true;
     setTimeout(() => {
@@ -686,10 +713,9 @@ function toggleDebateInput() {
 async function endAiDebate() {
     const actions = document.getElementById('decision-btn-area');
     if (actions) actions.style.display = 'none';
-    await renderChatMessage({ type: 'sys', text: '✅ 主席結論已產出，正在帶入資產配置與回測頁面…' });
+    await renderChatMessage({ type: 'sys', text: '✅ 主席結論已產出，正在帶入主席統整資料頁…' });
     debateFinished = true;
-    nav('page4');
-    loadDecisionBacktest();
+    nav('page-summary');
 }
 
 async function sendDebateMsg() {
@@ -732,35 +758,9 @@ async function sendDebateMsg() {
 async function endDebate() {
     if (aiModeEnabled()) return endAiDebate();
     document.getElementById('decision-btn-area').style.display = 'none';
-    await renderChatMessage({ type: 'sys', text: '⏱️ 辯論結束，主席正在彙整最終共識...' });
-
-    try {
-        const response = await apiFetch('/api/debate-message', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ market: currentMarket, message: '請根據前述討論，整理研究結論與後續觀察重點。' })
-        });
-        const resData = await response.json();
-
-        // Render Chair Summary in chat before navigating
-        await renderChatMessage({ agent: 'chair', icon: '👑', name: '主席委員', color: '#ffd700', text: resData.summary });
-        await new Promise(r => setTimeout(r, 1500));
-
-        // Populate Page 4 UI
-        if (globalData && globalData.investment_committee) {
-            globalData.investment_committee.final_action = resData.final_action;
-        } else {
-            globalData = { investment_committee: { final_action: resData.final_action } };
-        }
-        updateUIWithData(globalData);
-        nav('page4');
-        loadDecisionBacktest();
-
-    } catch (e) {
-        console.error("Conclude Debate Error:", e);
-        await renderChatMessage({ type: 'sys', text: `結案連線異常: ${e}` });
-        document.getElementById('decision-btn-area').style.display = 'flex';
-    }
+    await renderChatMessage({ type: 'sys', text: '✅ 主席已暫停辯論，正在帶入統整資料頁…' });
+    debateFinished = true;
+    nav('page-summary');
 }
 
 async function loadDecisionBacktest() {
@@ -1045,6 +1045,11 @@ function nav(pageId) {
             statusEl.style.color = 'var(--danger)';
             dotEl.style.background = 'var(--danger)';
             dotEl.style.boxShadow = '0 0 8px var(--danger)';
+        } else if (pageId === 'page-summary') {
+            statusEl.innerText = '主席統整中';
+            statusEl.style.color = 'var(--primary)';
+            dotEl.style.background = 'var(--primary)';
+            dotEl.style.boxShadow = '0 0 8px var(--primary)';
         } else if (pageId === 'page4') {
             statusEl.innerText = '決議已產出';
             statusEl.style.color = 'var(--warning)';
@@ -1142,9 +1147,10 @@ async function sendAssistantMsg() {
         const topicMatch = userText.match(/\b(BTC|ETH|DOGE|SOL)\b/i);
         currentTopic = topicMatch ? topicMatch[1].toUpperCase() : currentMarket.toUpperCase();
 
-        // 直接啟動辯論 Tab
+        // 先顯示人格分析，使用者確認後才進入委員會辯論。
         setTimeout(() => {
-            startDebate(userText);
+            pendingCommitteePrompt = userText;
+            nav('page2');
             document.getElementById('committee-switch').classList.remove('active-neon');
         }, 1500);
 

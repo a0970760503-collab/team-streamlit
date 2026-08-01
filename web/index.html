@@ -384,6 +384,14 @@
         .weight-bar-bg { width: 100%; height: 6px; background: #333; border-radius: 3px; margin-top: 4px; margin-bottom: 12px;}
         .weight-bar-fill { height: 100%; border-radius: 3px; }
 
+        /* 主席統整資料頁 */
+        .chair-summary-card { background: rgba(8, 13, 25, .92); border: 1px solid rgba(0, 240, 255, .35); border-radius: 14px; padding: 16px; margin: 12px 0; box-shadow: 0 0 20px rgba(0, 240, 255, .08); }
+        .chair-summary-text { white-space: pre-line; color: #e2e8f0; font-size: 14px; line-height: 1.75; }
+        .summary-agent-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 20px; }
+        .summary-agent-card { background: rgba(255,255,255,.035); border-left: 3px solid var(--primary); border-radius: 8px; padding: 11px; }
+        .summary-agent-card h3 { margin: 0 0 6px; font-size: 13px; }
+        .summary-agent-card p { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.55; }
+
         /* Page 5: Strategy Styles */
         .pie-placeholder { width: 180px; height: 180px; border-radius: 50%; margin: 0 auto 24px; background: conic-gradient(#333 0% 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 0 20px rgba(255,255,255,0.05); }
         .pie-inner { width: 120px; height: 120px; border-radius: 50%; background: var(--bg-base); display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-weight:bold;}
@@ -726,7 +734,8 @@
         <div id="page2" class="page">
             <div class="cyber-header">
                 <h2>> 讀取用戶投資基因</h2>
-                <p style="font-size: 13px; color: var(--text-muted); margin:0;">正在解析過去 1 年 MAX 交易紀錄...</p>
+                <p style="font-size: 13px; color: var(--primary); margin:0;">AI 模式｜第一階段：人格分析</p>
+                <p style="font-size: 13px; color: var(--text-muted); margin:6px 0 0;">正在解析過去 1 年 MAX 交易紀錄...</p>
             </div>
             
             <!-- 全新 SVG 專業雷達圖 -->
@@ -764,7 +773,7 @@
                 <div class="cyber-stat-box"><div class="val" style="color:var(--danger)">-15%</div><div class="lbl">最大資金回撤</div></div>
                 <div class="cyber-stat-box"><div class="val">4.2 天</div><div class="lbl">平均持倉時間</div></div>
             </div>
-            <button class="glow-btn" onclick="startDebate()">啟動 AI 投資委員會 ❯</button>
+            <button class="glow-btn" onclick="startDebate()">查看人格摘要並啟動 AI 投資委員會 ❯</button>
         </div>
 
         <!-- PAGE 3: 動態辯論會議室 -->
@@ -782,6 +791,23 @@
                     <button class="glow-btn" style="margin: 0; box-shadow: 0 0 20px rgba(112, 0, 255, 0.6); flex:1;" onclick="endDebate()">⚡ 結束辯論</button>
                 </div>
             </div>
+        </div>
+
+        <!-- 主席統整資料頁：四位委員辯論後、投票前 -->
+        <div id="page-summary" class="page">
+            <div class="cyber-header"><h2>> 主席統整資料</h2><p style="font-size:13px; color:var(--text-muted); margin:0;">主席已暫停辯論並協調四方研究觀點</p></div>
+            <div class="chair-summary-card" style="border-color:rgba(255,215,0,.55);">
+                <div style="display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px;"><b style="color:#ffd700;">👑 主席協調結論</b><span id="summary-action" class="tag" style="margin:0;">研究決策：HOLD</span></div>
+                <div id="chair-summary-content" class="chair-summary-text">等待四位委員完成辯論後，由主席載入統整資料。</div>
+            </div>
+            <h3 style="font-size:14px; color:var(--primary); margin:18px 0 8px;">四方辯論重點</h3>
+            <div class="summary-agent-grid">
+                <article class="summary-agent-card" style="border-left-color:var(--primary);"><h3 style="color:var(--primary);">📈 技術</h3><p id="summary-tech">等待資料…</p></article>
+                <article class="summary-agent-card" style="border-left-color:var(--warning);"><h3 style="color:var(--warning);">🛡️ 風險</h3><p id="summary-risk">等待資料…</p></article>
+                <article class="summary-agent-card" style="border-left-color:var(--success);"><h3 style="color:var(--success);">🌐 情緒</h3><p id="summary-sent">等待資料…</p></article>
+                <article class="summary-agent-card" style="border-left-color:var(--secondary);"><h3 style="color:var(--secondary);">🧠 行為</h3><p id="summary-behav">等待資料…</p></article>
+            </div>
+            <button class="glow-btn" onclick="nav('page4')">查看 AI 委員會投票結果 ❯</button>
         </div>
 
         <!-- PAGE 4: 投票結果 -->
@@ -805,7 +831,7 @@
                 <div class="weight-item"><span>🌐 輿情情緒 (15%)</span><span id="score-sent-text" style="color:var(--success)">BUY (恐慌極值)</span></div>
                 <div class="weight-bar-bg"><div class="weight-bar-fill" id="score-sent-bar" style="width:15%; background:var(--success)"></div></div>
             </div>
-            <button class="glow-btn" onclick="nav('page5')">生成專屬資產配置 ❯</button>
+            <button class="glow-btn" onclick="nav('page5'); loadDecisionBacktest()">生成專屬資產配置／回測 ❯</button>
         </div>
 
         <!-- PAGE 5: 策略建議 -->
