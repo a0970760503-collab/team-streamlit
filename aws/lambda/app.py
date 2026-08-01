@@ -271,7 +271,10 @@ def request_bedrock_json(system, prompt, max_tokens, temperature):
         text = "".join(item.get("text", "") for item in response["output"]["message"]["content"])
         value = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
     except (BotoCoreError, ClientError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
-        raise RuntimeError("Amazon Bedrock AI 暫時無法使用；請確認模型存取權與 Lambda IAM 權限。") from exc
+        # Keep diagnostics free of request content and secrets while preserving
+        # the AWS error needed to investigate model access or IAM problems.
+        print(f"BedrockConverseFailed type={type(exc).__name__} message={exc}")
+        raise RuntimeError("Amazon Bedrock request failed; review the Lambda CloudWatch log for the error type.") from exc
     if not isinstance(value, dict):
         raise RuntimeError("Amazon Bedrock returned an invalid format.")
     return value
