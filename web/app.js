@@ -2548,7 +2548,54 @@ function communityMarket() { return (currentMarket || 'btcusdt').toLowerCase(); 
 function communityDisplayName() { const el = document.getElementById('live-chat-name'); const name = (el && el.value.trim()) || localStorage.getItem('community-display-name') || ('Guest-' + Math.floor(1000 + Math.random() * 9000)); localStorage.setItem('community-display-name', name.slice(0, 30)); if (el) el.value = name.slice(0, 30); return name.slice(0, 30); }
 function appendLiveMessage(text, type, name) { const box = document.getElementById('live-chat-messages'); if (!box) return; const row = document.createElement('div'); row.className = 'live-msg ' + (type || 'other'); const who = document.createElement('span'); who.className = 'name'; who.textContent = name || 'Guest'; const body = document.createElement('span'); body.className = 'text'; body.textContent = text; row.append(who, body); box.appendChild(row); box.scrollTop = box.scrollHeight; }
 function renderCommunityMessages(messages) { const box = document.getElementById('live-chat-messages'); if (!box) return; box.replaceChildren(); for (const m of messages || []) appendLiveMessage(m.message, m.name === communityDisplayName() ? 'user' : m.name === 'AI 委員會' ? 'ai' : 'other', m.name); if (!(messages || []).length) appendLiveMessage('率先分享你的觀點；輸入 @AI 可邀請委員會回覆。', 'ai', 'AI 委員會'); }
-async function loadCommunityMessages() { const r = await apiFetch('/api/community?market=' + encodeURIComponent(communityMarket())); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'Community unavailable'); renderCommunityMessages(p.messages); }
-async function postCommunityMessage(name, message) { const r = await apiFetch('/api/community', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: communityMarket(), name, message }) }); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'Message failed'); return p.message; }
-async function toggleCommunityPanel() { const panel = document.getElementById('community-panel'); if (!panel) return; const opening = !panel.classList.contains('open'); panel.classList.toggle('open', opening); if (!opening) { clearInterval(communityRefreshTimer); return; } document.getElementById('community-market-label').textContent = communityMarket().toUpperCase(); communityDisplayName(); try { await loadCommunityMessages(); } catch (e) { appendLiveMessage(e.message, 'ai', 'System'); } clearInterval(communityRefreshTimer); communityRefreshTimer = setInterval(() => { if (panel.classList.contains('open')) loadCommunityMessages().catch(() => {}); }, 8000); }
-async function sendLiveMessage() { const input = document.getElementById('live-chat-input'); const text = input && input.value.trim(); if (!text) return; input.value = ''; try { await postCommunityMessage(communityDisplayName(), text); await loadCommunityMessages(); if (/(^|\s)@ai\b/i.test(text)) { const r = await apiFetch('/api/debate-message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: communityMarket(), message: text.replace(/@ai\b/ig, '').trim() || text }) }); const p = await r.json(); if (!r.ok) throw new Error(p.error || '委員會暫時無法回覆'); await postCommunityMessage('AI 委員會', (p.replies && p.replies.chair) || '委員會正在整理討論內容。'); await loadCommunityMessages(); } } catch (e) { appendLiveMessage(e.message, 'ai', '系統'); } }
+// Community discussion is a fixed presentation script, so this panel never
+// depends on API availability during a demo.
+const COMMUNITY_DEMO_MESSAGES = [
+    { name: '小安', message: 'BTC 剛靠近壓力區，我先不追價，等下一根 K 線確認。' },
+    { name: '阿哲', message: '我把部位降到原本的一半，避免短線波動影響判斷。' },
+    { name: 'AI 委員會', message: '提醒：以上是展示討論。先確認可承受風險、部位大小與退出條件；內容不構成投資建議。' },
+    { name: 'Mia', message: '我會先把交易計畫寫下來，再決定是否進場。' }
+];
+const COMMUNITY_DEMO_AI_REPLIES = [
+    '已記錄你的觀點。展示委員會建議先比對交易計畫與風險上限，再做下一步判斷。',
+    '謝謝分享。市場波動很快，請以自己的風險承受度與既定規則為準。',
+    '展示提醒：不以單一訊息作為交易依據；保留觀察空間也是一種紀律。'
+];
+let communityDemoReplyIndex = 0;
+
+async function loadCommunityMessages() {
+    renderCommunityMessages(COMMUNITY_DEMO_MESSAGES);
+}
+
+async function postCommunityMessage(name, message) {
+    const entry = { name: String(name || '訪客').slice(0, 30), message: String(message || '').slice(0, 500) };
+    COMMUNITY_DEMO_MESSAGES.push(entry);
+    return entry;
+}
+
+async function toggleCommunityPanel() {
+    const panel = document.getElementById('community-panel');
+    if (!panel) return;
+    const opening = !panel.classList.contains('open');
+    panel.classList.toggle('open', opening);
+    clearInterval(communityRefreshTimer);
+    if (!opening) return;
+    const label = document.getElementById('community-market-label');
+    if (label) label.textContent = `${communityMarket().toUpperCase()} · 展示劇本`;
+    communityDisplayName();
+    await loadCommunityMessages();
+}
+
+async function sendLiveMessage() {
+    const input = document.getElementById('live-chat-input');
+    const text = input && input.value.trim();
+    if (!text) return;
+    input.value = '';
+    await postCommunityMessage(communityDisplayName(), text);
+    const requestedAi = /(^|\s)@ai\b/i.test(text);
+    const response = requestedAi
+        ? COMMUNITY_DEMO_AI_REPLIES[communityDemoReplyIndex++ % COMMUNITY_DEMO_AI_REPLIES.length]
+        : 'AI 委員會已看見你的分享。若想聽展示回覆，可在訊息中輸入 @AI。';
+    await postCommunityMessage('AI 委員會', response);
+    await loadCommunityMessages();
+}
