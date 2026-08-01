@@ -1486,9 +1486,11 @@ function showDashboardHomeView() {
     const homeView = document.getElementById('dashboard-home-view');
     const chartView = document.getElementById('dashboard-chart-view');
     const learningView = document.getElementById('learning-view');
+    const disciplineView = document.getElementById('discipline-view');
     if (homeView) homeView.style.display = 'flex';
     if (chartView) chartView.style.display = 'none';
     if (learningView) learningView.classList.remove('open');
+    if (disciplineView) disciplineView.classList.remove('open');
 
     if (homePollingInterval) clearInterval(homePollingInterval);
     if (chartPollingInterval) clearInterval(chartPollingInterval);
@@ -1552,6 +1554,28 @@ function showLearningView() {
     if (chartView) chartView.style.display = 'none';
     if (learningView) learningView.classList.add('open');
     renderLearningProgress();
+}
+
+let disciplineSimulationActive = false;
+function showDisciplineView() {
+    activeDashboardView = 'discipline';
+    if (homePollingInterval) clearInterval(homePollingInterval);
+    if (chartPollingInterval) clearInterval(chartPollingInterval);
+    document.getElementById('dashboard-home-view')?.style && (document.getElementById('dashboard-home-view').style.display = 'none');
+    document.getElementById('dashboard-chart-view')?.style && (document.getElementById('dashboard-chart-view').style.display = 'none');
+    document.getElementById('learning-view')?.classList.remove('open');
+    document.getElementById('discipline-view')?.classList.add('open');
+}
+function startDisciplineSimulation() {
+    disciplineSimulationActive = true;
+    const asset = document.getElementById('discipline-asset')?.value || 'USDT';
+    document.getElementById('discipline-result').textContent = `已簽署模擬合約：以 ${asset} 作為示意保證金；系統不會扣款、不會連結錢包。請選擇守約或違規情境。`;
+}
+function resolveDisciplineSimulation(keptPlan) {
+    const result = document.getElementById('discipline-result');
+    if (!disciplineSimulationActive) { result.textContent = '請先簽署模擬合約。'; return; }
+    if (keptPlan) result.textContent = '✓ 模擬守約：示意返還保證金並獲得 2% 獎勵券；此結果不會產生任何真實資產或收益。';
+    else { document.getElementById('discipline-pool').textContent = '1,260 USDT（模擬）'; result.textContent = '⚠ 模擬違規：示意 10% 保證金進入獎金池；此結果不會沒收任何真實資產。'; }
 }
 
 function renderLearningProgress() {
