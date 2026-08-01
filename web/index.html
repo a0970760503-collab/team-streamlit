@@ -123,38 +123,6 @@
             box-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
         }
 
-        /* Claude 技術與新聞分析面板 */
-        #claude-analysis-drawer {
-            width: calc(100% - 24px);
-            left: 12px;
-            bottom: 18px;
-            max-height: 78vh;
-            position: absolute;
-            z-index: 1004;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            border: 1px solid rgba(0, 240, 255, 0.35);
-            border-radius: 18px;
-            background: linear-gradient(160deg, #0c1323 0%, #08090d 60%);
-            box-shadow: 0 14px 42px rgba(0, 0, 0, 0.65), 0 0 22px rgba(0, 240, 255, 0.16);
-            opacity: 0;
-            pointer-events: none;
-            transform: translateY(24px) scale(0.96);
-            transition: opacity .22s ease, transform .22s ease;
-        }
-        #claude-analysis-drawer.open {
-            opacity: 1;
-            pointer-events: auto;
-            transform: translateY(0) scale(1);
-        }
-        .claude-analysis-content { overflow-y: auto; padding: 13px 15px 16px; font-size: 12px; line-height: 1.55; }
-        .claude-analysis-section { padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
-        .claude-analysis-section:last-child { border-bottom: 0; }
-        .claude-analysis-section h4 { margin: 0 0 5px; color: var(--primary); font-size: 12px; letter-spacing: .3px; }
-        .claude-analysis-section p { margin: 0; color: #d4d9e4; white-space: pre-wrap; }
-        .claude-watchpoints { margin: 7px 0 0; padding-left: 18px; color: #d4d9e4; }
-
         /* 懸浮彈出式 AI 助理控制面板 (定位於手機框內部) */
         .app-container {
             width: calc(100% - 24px);
@@ -331,19 +299,6 @@
         .avatar.risk { background: rgba(255, 215, 0, 0.2); border: 1px solid var(--warning); }
         .avatar.behav { background: rgba(112, 0, 255, 0.2); border: 1px solid var(--secondary); }
         .avatar.chair { background: linear-gradient(135deg, var(--primary), var(--secondary)); }
-        .avatar.user { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); }
-        .avatar.other { background: rgba(255,165,0,0.1); border: 1px solid rgba(255,165,0,0.3); }
-        .msg-block.right { flex-direction: row-reverse; }
-        .msg-block.right .msg-bubble { border-radius: 12px 0 12px 12px; background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0,240,255,0.2); color: #fff; }
-        .msg-block.right .msg-header { flex-direction: row-reverse; }
-        .msg-block.right .msg-content { display: flex; flex-direction: column; align-items: flex-end; }
-        .live-msg { font-size:10px; line-height:1.4; display:flex; flex-direction:column; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-left:2px solid transparent;}
-        .live-msg .name { font-weight:bold; color:var(--text-muted); font-size:9px; margin-bottom:2px;}
-        .live-msg .text { color:#fff; }
-        .live-msg.ai { border-left-color:var(--primary); background:rgba(0,240,255,0.05); }
-        .live-msg.ai .name { color:var(--primary); }
-        .live-msg.user { border-left-color:var(--success); background:rgba(57,255,20,0.05); }
-        .live-msg.user .name { color:var(--success); }
         .msg-content { flex: 1; }
         .msg-header { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
         .agent-name { font-weight: 600; font-size: 13px; }
@@ -444,7 +399,10 @@
                     <span style="width:6px; height:6px; background:var(--success); border-radius:50%; box-shadow:0 0 5px var(--success);"></span>
                 </div>
                 <div id="home-news-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 10px; line-height: 1.3;">
-                    <!-- 由 JS 動態產生綜合新聞 -->
+                    <div style="color:var(--text-muted); text-align:center; padding:10px;">
+                        <span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>
+                        載入即時快訊中...
+                    </div>
                 </div>
             </div>
         </div>
@@ -467,7 +425,6 @@
                             <span style="font-size:9px; padding:1px 4px; background:rgba(0,240,255,0.08); border:1px solid rgba(0,240,255,0.3); border-radius:3px; cursor:pointer; color:var(--primary); user-select:none;" onclick="changeMarket('btcusdt')">BTC</span>
                             <span style="font-size:9px; padding:1px 4px; background:rgba(112,0,255,0.08); border:1px solid rgba(112,0,255,0.3); border-radius:3px; cursor:pointer; color:#b070ff; user-select:none;" onclick="changeMarket('ethusdt')">ETH</span>
                             <span style="font-size:9px; padding:1px 4px; background:rgba(255,215,0,0.08); border:1px solid rgba(255,215,0,0.3); border-radius:3px; cursor:pointer; color:var(--warning); user-select:none;" onclick="changeMarket('dogeusdt')">DOGE</span>
-                            <button type="button" onclick="openClaudeAnalysis()" style="font-size:9px; padding:2px 5px; background:rgba(0,240,255,0.1); border:1px solid rgba(0,240,255,0.45); border-radius:3px; cursor:pointer; color:var(--primary); font-weight:bold;">✨ Claude</button>
                             <!-- 搜尋框 -->
                             <input type="text" id="market-search" placeholder="搜尋..." style="width:52px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:9px; padding:2px 4px; border-radius:3px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') changeMarket(this.value)">
                         </div>
@@ -516,28 +473,13 @@
                         <!-- 由 MAX API 動態更新 -->
                     </div>
                 </div>
-                <!-- 快訊與直播聊天室 (Tab 切換) -->
+                <!-- 新聞快訊 (手機版商品專屬) -->
                 <div style="flex: 1.5; display: flex; flex-direction: column; overflow: hidden;">
-                    <!-- Tabs -->
-                    <div style="display:flex; gap:10px; margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); flex-shrink: 0;">
-                        <div id="tab-news" style="color: var(--warning); font-weight: bold; font-size: 11px; letter-spacing: 0.5px; padding-bottom:4px; border-bottom:2px solid var(--warning); cursor:pointer; transition:0.2s;" onclick="switchBottomTab('news')">📰 即時快訊</div>
-                        <div id="tab-chat" style="color: var(--text-muted); font-weight: bold; font-size: 11px; letter-spacing: 0.5px; padding-bottom:4px; border-bottom:2px solid transparent; cursor:pointer; display:flex; align-items:center; gap:4px; transition:0.2s;" onclick="switchBottomTab('chat')">💬 聊天室 <span style="width:4px; height:4px; background:var(--success); border-radius:50%; box-shadow:0 0 5px var(--success);"></span></div>
-                    </div>
-                    
-                    <!-- News Content -->
+                    <div style="color: var(--warning); font-weight: bold; font-size: 11px; margin-bottom: 6px; letter-spacing: 0.5px;">📰 即時快訊</div>
                     <div id="phone-news-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 10px; line-height: 1.3;">
-                        <!-- 由 JS 隨商品動態生成 -->
-                    </div>
-                    
-                    <!-- Live Chat Content (預設隱藏) -->
-                    <div id="phone-chat-container" style="flex: 1; overflow-y: hidden; display: none; flex-direction: column; position:relative;">
-                        <div id="live-chat-messages" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px; padding-bottom:30px; scroll-behavior:smooth;">
-                           <div style="font-size:9px; color:var(--text-muted); text-align:center; padding:4px;">⚡ 歡迎加入直播間，輸入 @AI 呼叫分析師</div>
-                           <!-- 即時訊息 -->
-                        </div>
-                        <div style="position:absolute; bottom:0; left:0; right:0; display:flex; gap:4px; background:#09090b; padding-top:4px;">
-                            <input type="text" id="live-chat-input" placeholder="聊天... (@AI)" style="flex:1; background:#18181b; border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:4px; font-size:10px; padding:4px 6px; outline:none;" onkeydown="if(event.key==='Enter') sendLiveMessage()">
-                            <button onclick="sendLiveMessage()" style="background:var(--secondary); color:#fff; border:none; border-radius:4px; padding:0 8px; font-size:10px; cursor:pointer; display:flex; align-items:center; justify-content:center;">➤</button>
+                        <div style="color:var(--text-muted); text-align:center; padding:10px;">
+                            <span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>
+                            載入即時快訊中...
                         </div>
                     </div>
                 </div>
@@ -545,19 +487,6 @@
         </div>
         
     </div>
-
-    <section id="claude-analysis-drawer" aria-live="polite" aria-label="Claude AI 綜合分析">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; border-bottom:1px solid rgba(0,240,255,.22); background:rgba(0,0,0,.25);">
-            <div>
-                <div style="color:var(--primary); font-weight:bold; font-size:13px; letter-spacing:.5px;">✨ Claude AI 綜合分析</div>
-                <div id="claude-analysis-meta" style="color:var(--text-muted); font-size:10px; margin-top:2px;">技術面 + 最近 7 天新聞</div>
-            </div>
-            <button type="button" onclick="closeClaudeAnalysis()" aria-label="關閉 Claude 分析" style="border:0; background:transparent; color:var(--text-muted); font-size:20px; cursor:pointer; line-height:1;">×</button>
-        </div>
-        <div id="claude-analysis-content" class="claude-analysis-content">
-            <div style="color:var(--text-muted);">選擇商品後，按下「✨ Claude」即可產生技術面與新聞統整。</div>
-        </div>
-    </section>
     
     <!-- 懸浮彈出式 AI 助理控制面板 (定位於手機框內部) -->
     <div class="app-container">
@@ -571,13 +500,18 @@
 
         <!-- PAGE 1: AI 助理聊天室 (全新首頁) -->
         <div id="page1" class="page active" style="padding: 16px 20px 80px; position: relative; height: 100%; justify-content: flex-end;">
-            <div class="cyber-header" style="margin-top: 10px; margin-bottom: 10px; flex-shrink: 0;">
-                <h2>> AI 投資助理</h2>
-                <p style="font-size: 13px; color: var(--text-muted); margin:0;">即時一般問答 / ⚡召開委員會深度分析</p>
+            <div class="cyber-header" style="margin-top: 10px; margin-bottom: 10px; flex-shrink: 0; display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2>> AI 互動中心</h2>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button id="tab-btn-assistant" onclick="switchTab('assistant')" style="flex:1; padding:8px; border:1px solid var(--primary); background:rgba(112,0,255,0.2); color:#fff; border-radius:5px; cursor:pointer;">對話助理</button>
+                    <button id="tab-btn-debate" onclick="switchTab('debate')" style="flex:1; padding:8px; border:1px solid rgba(255,255,255,0.2); background:transparent; color:var(--text-muted); border-radius:5px; cursor:pointer; display:none;">⚡ 委員會</button>
+                </div>
             </div>
             
-            <!-- 對話區 -->
-            <div class="chat-container" id="assistant-chat-box" style="flex: 1; margin-bottom: 20px; padding-bottom: 0;">
+            <!-- 對話區 (Tab 1: Assistant) -->
+            <div class="chat-container" id="assistant-chat-box" style="flex: 1; margin-bottom: 20px; padding-bottom: 0; display:flex;">
                 <div class="msg-block">
                     <div class="avatar tech" style="background: rgba(0, 240, 255, 0.2); border: 1px solid var(--primary);">🤖</div>
                     <div class="msg-content">
@@ -587,12 +521,30 @@
                 </div>
             </div>
             
+            <!-- 辯論區 (Tab 2: Debate) -->
+            <div class="chat-container" id="debate-chat-box" style="flex: 1; margin-bottom: 20px; padding-bottom: 0; display:none; flex-direction:column;">
+                <div class="sys-msg" id="debate-sys-msg"><span>🚨 系統警報：已啟動緊急辯論會議</span></div>
+                <div id="debate-messages-container" style="flex:1; overflow-y:auto; margin-top:10px; margin-bottom:10px;"></div>
+                
+                <div class="decision-btn-container" id="decision-btn-area" style="display:none; flex-direction:column; gap:10px;">
+                    <div id="debate-input-area" style="display:none; flex-direction:column; gap:8px;">
+                        <input type="text" id="debate-input" placeholder="輸入您的觀點或指定幣種..." style="width:100%; padding:12px; border-radius:8px; background:rgba(0,0,0,0.8); border:1px solid var(--primary); color:#fff;" onkeydown="if(event.key==='Enter') sendDebateMsg()">
+                        <button class="glow-btn" style="margin:0; padding:10px; font-size:14px;" onclick="sendDebateMsg()">發送觀點</button>
+                    </div>
+                    <div id="debate-action-btns" style="display:flex; gap:10px; width:100%;">
+                        <button class="glow-btn" style="margin: 0; background:var(--bg-chat); border:1px solid var(--primary); color:var(--primary); box-shadow:none; flex:1;" onclick="toggleDebateInput()">🙋 加入討論</button>
+                        <button class="glow-btn" style="margin: 0; box-shadow: 0 0 20px rgba(112, 0, 255, 0.6); flex:1;" onclick="endDebate()">⚡ 結束辯論</button>
+                    </div>
+                </div>
+            </div>
+            
             <!-- 底部輸入與控制區 -->
             <div class="chat-input-area" style="display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; width: 100%; margin-bottom: 10px;">
                 <!-- 輸入框 -->
                 <input type="text" id="assistant-input" placeholder="輸入您的問題..." onkeydown="if(event.key==='Enter') sendAssistantMsg()">
                 
-                <!-- 底部控制欄：左邊是滑桿開關，右邊是送出按鈕 -->
+
+            <!-- 底部控制欄：左邊是滑桿開關，右邊是送出按鈕 -->
                 <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 4px;">
                     <!-- 滑桿切換區 -->
                     <div style="display: flex; align-items: center; gap: 8px; cursor: pointer;" onclick="toggleCommitteeMode()">
@@ -653,12 +605,19 @@
         </div>
 
         <!-- PAGE 3: 動態辯論會議室 -->
-        <div id="page3" class="page" style="padding: 12px 20px; position: relative;">
-            <div class="chat-container" id="chat-box">
+        <div id="page3" class="page" style="display:none !important;" style="padding: 12px 20px 130px; position: relative;">
+            <div class="chat-container" id="chat-box" style="padding-bottom: 20px;">
                 <div class="sys-msg"><span>🚨 系統警報：BTC 盤中急跌 5%，跌破關鍵支撐<br>已啟動緊急辯論會議</span></div>
             </div>
-            <div class="decision-btn-container" id="decision-btn-area">
-                <button class="glow-btn" style="margin: 0; box-shadow: 0 0 20px rgba(112, 0, 255, 0.6);" onclick="nav('page4')">⚡ 結束辯論，查看最終決議</button>
+            <div class="decision-btn-container" id="decision-btn-area" style="display:flex; flex-direction:column; gap:10px;">
+                <div id="debate-input-area" style="display:none; flex-direction:column; gap:8px;">
+                    <input type="text" id="debate-input" placeholder="輸入您的觀點或提問..." style="width:100%; padding:12px; border-radius:8px; background:rgba(0,0,0,0.8); border:1px solid var(--primary); color:#fff;" onkeydown="if(event.key==='Enter') sendDebateMsg()">
+                    <button class="glow-btn" style="margin:0; padding:10px; font-size:14px;" onclick="sendDebateMsg()">發送並繼續討論</button>
+                </div>
+                <div id="debate-action-btns" style="display:flex; gap:10px; width:100%;">
+                    <button class="glow-btn" style="margin: 0; background:var(--bg-chat); border:1px solid var(--primary); color:var(--primary); box-shadow:none; flex:1;" onclick="toggleDebateInput()">🙋 加入討論</button>
+                    <button class="glow-btn" style="margin: 0; box-shadow: 0 0 20px rgba(112, 0, 255, 0.6); flex:1;" onclick="endDebate()">⚡ 結束辯論</button>
+                </div>
             </div>
         </div>
 
@@ -729,7 +688,7 @@
     </div>
 </div>
 
-<script src="app.js" defer></script>
+<script src="app.js?v=2" defer></script>
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

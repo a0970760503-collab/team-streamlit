@@ -2,16 +2,26 @@ import os
 import sys
 import time
 import subprocess
-import webbrowser
+import threading
 import socketserver
+import os
+import sys
+
+# Force UTF-8 encoding for stdout on Windows to prevent cp950 crashes
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
+# ---------------------------------------------------------
+import socket
+import webbrowser
 import http.server
 import json
 import socket
 import urllib.request
 import urllib.error
 import urllib.parse
-from datetime import datetime, timedelta, timezone
-from email.utils import parsedate_to_datetime
+from datetime import datetime
 import random
 import threading
 import xml.etree.ElementTree as ET
@@ -19,31 +29,21 @@ import hmac
 import hashlib
 import base64
 
+from dotenv import load_dotenv
+import boto3
+
+load_dotenv()
+try:
+    bedrock_client = boto3.client('bedrock-runtime', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
+except Exception as e:
+    print(f"Warning: Failed to initialize Bedrock client: {e}")
+    bedrock_client = None
+
 base_dir = os.path.dirname(os.path.abspath(__file__))
 web_index = os.path.join(base_dir, "web", "index.html")
 PORT = 8080
 # 僅綁定本機迴環，避免公共 Wi-Fi 未授權存取
 HOST = "127.0.0.1"
-
-
-def load_local_env():
-    """Load simple KEY=value pairs from .env without adding a third-party dependency."""
-    env_path = os.path.join(base_dir, ".env")
-    if not os.path.exists(env_path):
-        return
-    with open(env_path, "r", encoding="utf-8") as env_file:
-        for raw_line in env_file:
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip('"').strip("'")
-            if key:
-                os.environ.setdefault(key, value)
-
-
-load_local_env()
 
 print("==================================================================")
 print("AI Investment Committee Master Orchestrator Starting...")
@@ -99,6 +99,12 @@ if os.path.exists(r_script):
 
 # 2. 本地輕量 API 伺服器處理類別
 class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=os.path.join(base_dir, "web"), **kwargs)
     def do_OPTIONS(self):
@@ -123,25 +129,54 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             elif path == "/test":
                 self.respond_json({"status": "ok", "message": "API Server Running"})
             else:
-                self.send_error(404, "Endpoint Not Found")
+                self.respond_json({"error": "Endpoint Not Found"}, status=404)
         else:
             super().do_GET()
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path in ("/api/trade", "/api/ai-analysis"):
+        if parsed.path == "/api/trade":
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length).decode('utf-8')
             try:
                 payload = json.loads(post_data) if post_data else {}
             except:
                 payload = {}
-            if parsed.path == "/api/ai-analysis":
-                self.handle_ai_analysis(payload)
-            else:
-                self.handle_trade(payload)
+            self.handle_trade(payload)
+        elif parsed.path == "/api/chat_assistant":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_chat_assistant(payload)
+        elif parsed.path == "/api/chat_debate":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_chat_debate(payload)
+        elif parsed.path == "/api/conclude_debate":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_conclude_debate(payload)
+        elif parsed.path == "/api/extract_topic":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_extract_topic(payload)
         else:
-            self.send_error(404, "Endpoint Not Found")
+            self.respond_json({"error": "Endpoint Not Found"}, status=404)
 
     def handle_report(self):
         ticker = fetch_max_ticker("soltwd")
@@ -168,9 +203,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"Failed to read agent_report.json, falling back to mock data: {e}")
             rsi = round(45.0 + (random.random() * 20 - 10), 1)
-            signal = "BUY" if rsi < 40 else ("SELL" if rsi > 70 else "HOLD")
             risk_score = 65
-            buy_votes = random.randint(65, 75)
             personality = "波段型"
             win_rate = 68.0
             sentiment_score = 72
@@ -178,9 +211,55 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             behavior_score = 80
 
         if price_available:
-            price_phrase = f"當前 SOL/TWD 即時報價 ${price:.2f} (24h: {change24h:+.2f}%)"
+            price_phrase = f"當前即時報價 ${price:.2f} (24h: {change24h:+.2f}%)"
         else:
-            price_phrase = "SOL/TWD 即時報價暫時無法取得（行情來源異常，未以任何替代數值填補）"
+            price_phrase = "即時報價暫時無法取得"
+
+        def invoke_claude(role_prompt, data_context):
+            if not getattr(sys.modules[__name__], 'bedrock_client', None):
+                return {"text": "Bedrock 客戶端尚未初始化", "signal": "HOLD"}
+            
+            prompt = f"Human: 你現在是 AI 投資委員會的「{role_prompt}」。\n請根據以下數據進行 40 字以內的極簡分析，並在最後一行獨立輸出你的決策(只能是 BUY, HOLD, 或 SELL 其中一個單字)：\n{data_context}\n\nAssistant:"
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 150,
+                "temperature": 0.5,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": prompt}]
+                    }
+                ]
+            })
+            
+            def _do_invoke():
+                response = bedrock_client.invoke_model(
+                    modelId='us.anthropic.claude-sonnet-4-6',
+                    body=body
+                )
+                response_body = json.loads(response.get('body').read())
+                return response_body.get('content')[0]['text']
+
+            try:
+                result_text = BedrockGate.invoke(_do_invoke)
+                lines = result_text.strip().split('\n')
+                decision = "HOLD"
+                for d in ["BUY", "SELL", "HOLD"]:
+                    if d in lines[-1].upper():
+                        decision = d
+                        break
+                display_text = "\n".join(lines[:-1]).strip() if len(lines) > 1 else result_text
+                if not display_text:  # Fallback if Claude only returns the decision word
+                    display_text = f"({role_prompt} 選擇了 {decision})"
+                return {"text": display_text, "signal": decision}
+            except Exception as e:
+                print(f"Bedrock Error ({role_prompt}): {e}")
+                return {"text": f"API 呼叫失敗 ({e})", "signal": "HOLD"}
+
+        tech_res = invoke_claude("技術分析師", f"市場: {price_phrase}\nRSI指標: {rsi}")
+        risk_res = invoke_claude("風控長", f"市場: {price_phrase}\n風險評分: {risk_score}/100")
+        sent_res = invoke_claude("情緒分析師", f"市場: {price_phrase}\n社群討論分數: {sentiment_score}\n恐慌貪婪指數: {fear_greed}")
+        beh_res = invoke_claude("行為分析師", f"用戶性格: {personality}\n歷史勝率: {win_rate:.1f}%\n行為評分: {behavior_score}/100")
 
         debates = [
             {
@@ -188,37 +267,45 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "role": "技術面",
                 "avatar": "📊",
                 "score": str(int(rsi)),
-                "signal": signal,
-                "text": f"{price_phrase}，RSI 為 {rsi}。5日與20日均線呈現穩健走勢，技術面信號為 {signal}！"
+                "signal": tech_res["signal"],
+                "text": tech_res["text"]
             },
             {
                 "agent": "Risk Agent (風控長)",
                 "role": "風控面",
                 "avatar": "🛡️",
                 "score": str(risk_score),
-                "signal": "HOLD" if risk_score > 50 else "BUY",
-                "text": f"關注歷史波動！綜合風險評分為 {risk_score}/100。建議嚴格控制倉位，不可盲目追高！"
+                "signal": risk_res["signal"],
+                "text": risk_res["text"]
             },
             {
                 "agent": "Sentiment Agent (情緒分析師)",
                 "role": "輿情面",
                 "avatar": "💬",
-                "score": str(sentiment_score),
-                "signal": "BUY" if sentiment_score > 50 else "HOLD",
-                "text": f"CoinMarketCap 恐慌與貪婪指數為 {fear_greed}。社群討論度在 Threads 與 X 上偏向正面，市場情緒偏看多。"
+                "score": "68",
+                "signal": sent_res["signal"],
+                "text": sent_res["text"]
             },
             {
                 "agent": "Behavior Agent (人格分析師)",
                 "role": "用戶行為",
                 "avatar": "👤",
-                "score": str(behavior_score),
-                "signal": "BUY" if behavior_score > 50 else "HOLD",
-                "text": f"解析帳戶歷史交易，用戶屬於「{personality}」偏好，過往在此情境進場勝率達 {win_rate:.1f}%。契合當前佈局時機。"
+                "score": "80",
+                "signal": beh_res["signal"],
+                "text": beh_res["text"]
             }
         ]
 
-        hold_votes = min(20, 100 - buy_votes)
-        sell_votes = max(0, 100 - buy_votes - hold_votes)
+        buy_votes = sum(1 for d in debates if d["signal"] == "BUY") * 25
+        sell_votes = sum(1 for d in debates if d["signal"] == "SELL") * 25
+        hold_votes = 100 - buy_votes - sell_votes
+        
+        if buy_votes > sell_votes and buy_votes > hold_votes:
+            final_decision = "BUY (建議買進)"
+        elif sell_votes > buy_votes and sell_votes > hold_votes:
+            final_decision = "SELL (建議賣出)"
+        else:
+            final_decision = "HOLD (觀望)"
 
         res = {
             "currentPrice": price if price_available else None,
@@ -230,8 +317,8 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "buyPercentage": buy_votes,
                 "holdPercentage": hold_votes,
                 "sellPercentage": sell_votes,
-                "finalDecision": "BUY (建議買進)" if buy_votes >= 60 else "HOLD (觀望)",
-                "confidenceScore": buy_votes
+                "finalDecision": final_decision,
+                "confidenceScore": max(buy_votes, sell_votes, hold_votes)
             },
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -247,7 +334,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         params = urllib.parse.parse_qs(query_str)
         target_path = params.get("path", [""])[0]
         if not target_path:
-            self.send_error(400, "Missing path parameter")
+            self.respond_json({"error": "Missing path parameter"}, status=400)
             return
         parsed_self = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qsl(parsed_self.query)
@@ -264,7 +351,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(res_req.read().decode('utf-8'))
             self.respond_json(data)
         except Exception as e:
-            self.send_error(500, f"Proxy Error: {str(e)}")
+            self.respond_json({"error": f"Proxy Error: {str(e)}"}, status=500)
 
     def handle_trade(self, payload):
         market = payload.get("market", "soltwd").upper()
@@ -395,47 +482,8 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 })
             self.respond_json({"status": "success", "news": items})
         except Exception as e:
-            # Fallback data if RSS fetch fails
-            fallback = [
-                {"title": "BTC 突破 96,000 美元，創下歷史新高", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-                {"title": "以太坊現貨 ETF 獲准上市", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-                {"title": "Solana 網路升級成功，交易速度翻倍", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-            ]
-            self.respond_json({"status": "fallback", "news": fallback, "error": str(e)})
-
-    def handle_ai_analysis(self, payload):
-        market = str(payload.get("market", "btcusdt")).lower().strip()
-        if not market.isalnum() or not (3 <= len(market) <= 16):
-            self.respond_json({"error": "Invalid market symbol."}, status=400)
-            return
-
-        try:
-            period = int(payload.get("period", 60))
-        except (TypeError, ValueError):
-            period = 60
-        if period not in (1, 5, 15, 60, 240, 1440, 10080):
-            period = 60
-
-        try:
-            candles = fetch_max_klines(market, period, limit=120)
-            indicators = calculate_technical_indicators(candles)
-            news = fetch_recent_market_news(market, max_items=10)
-            analysis = request_claude_analysis(market, period, indicators, news)
-            self.respond_json({
-                "market": market.upper(),
-                "period": period,
-                "indicators": indicators,
-                "news": news,
-                "analysis": analysis,
-                "generatedAt": datetime.now(timezone.utc).isoformat(),
-            })
-        except ValueError as exc:
-            self.respond_json({"error": str(exc)}, status=400)
-        except RuntimeError as exc:
-            self.respond_json({"error": str(exc)}, status=503)
-        except Exception as exc:
-            print(f"[WARN] Claude analysis failed: {type(exc).__name__}: {exc}")
-            self.respond_json({"error": "AI analysis is temporarily unavailable. Please try again."}, status=502)
+            # RSS fetch fails
+            self.respond_json({"status": "error", "news": [], "error": str(e)})
 
     def respond_json(self, data, status=200):
         self.send_response(status)
@@ -444,208 +492,172 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
 
-def fetch_max_klines(market, period, limit=120):
-    url = "https://max-api.maicoin.com/api/v2/k?" + urllib.parse.urlencode({
-        "market": market,
-        "period": period,
-        "limit": limit,
-    })
-    req = urllib.request.Request(url, headers={"User-Agent": "AI-Investment-Committee/1.0"})
-    try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError,
-            json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError("Market candle data is unavailable.") from exc
-
-    if not isinstance(payload, list) or len(payload) < 35:
-        raise ValueError("Not enough candle data to calculate technical indicators.")
-
-    candles = []
-    for item in payload:
-        if not isinstance(item, list) or len(item) < 6:
-            continue
+    def handle_chat_assistant(self, payload):
+        user_text = payload.get("text", "")
+        # 取得熱門幣種即時價格
+        prices_info = ""
         try:
-            candles.append([float(item[index]) for index in range(6)])
-        except (TypeError, ValueError):
-            continue
-    if len(candles) < 35:
-        raise ValueError("Received incomplete candle data.")
-    return candles
+            btc = fetch_max_ticker("btctwd")
+            eth = fetch_max_ticker("ethtwd")
+            sol = fetch_max_ticker("soltwd")
+            prices_info = f"BTC: ${btc.get('price', 'N/A')}, ETH: ${eth.get('price', 'N/A')}, SOL: ${sol.get('price', 'N/A')} (TWD)"
+        except Exception as e:
+            prices_info = "暫時無法取得最新報價"
 
-
-def sma(values, period):
-    if len(values) < period:
-        return None
-    return sum(values[-period:]) / period
-
-
-def ema_series(values, period):
-    if len(values) < period:
-        return []
-    result = [None] * (period - 1)
-    value = sum(values[:period]) / period
-    result.append(value)
-    multiplier = 2 / (period + 1)
-    for item in values[period:]:
-        value = (item - value) * multiplier + value
-        result.append(value)
-    return result
-
-
-def rsi(values, period=14):
-    if len(values) <= period:
-        return None
-    gains = []
-    losses = []
-    for index in range(1, period + 1):
-        change = values[index] - values[index - 1]
-        gains.append(max(change, 0))
-        losses.append(abs(min(change, 0)))
-    average_gain = sum(gains) / period
-    average_loss = sum(losses) / period
-    for index in range(period + 1, len(values)):
-        change = values[index] - values[index - 1]
-        average_gain = (average_gain * (period - 1) + max(change, 0)) / period
-        average_loss = (average_loss * (period - 1) + abs(min(change, 0))) / period
-    if average_loss == 0:
-        return 100.0
-    return 100 - (100 / (1 + average_gain / average_loss))
-
-
-def calculate_technical_indicators(candles):
-    closes = [item[4] for item in candles]
-    ema12 = ema_series(closes, 12)
-    ema26 = ema_series(closes, 26)
-    macd_values = [ema12[index] - ema26[index] for index in range(25, len(closes))]
-    signal_values = ema_series(macd_values, 9)
-    latest_close = closes[-1]
-    sma20 = sma(closes, 20)
-    sma50 = sma(closes, 50)
-    latest_rsi = rsi(closes, 14)
-    latest_macd = macd_values[-1]
-    latest_signal = signal_values[-1]
-
-    score = 0
-    score += 1 if latest_close > sma20 else -1
-    score += 1 if sma20 > sma50 else -1
-    score += 1 if 50 <= latest_rsi <= 70 else 0
-    score += -1 if latest_rsi > 70 else 0
-    score += 1 if latest_macd > latest_signal else -1
-    bias = "bullish" if score >= 2 else ("bearish" if score <= -2 else "neutral")
-    return {
-        "close": round(latest_close, 8),
-        "sma20": round(sma20, 8),
-        "sma50": round(sma50, 8),
-        "rsi14": round(latest_rsi, 2),
-        "macd": round(latest_macd, 8),
-        "macdSignal": round(latest_signal, 8),
-        "trendBias": bias,
-        "indicatorScore": score,
-        "candleCount": len(candles),
-    }
-
-
-def fetch_recent_market_news(market, max_items=10):
-    base = market.lower().replace("usdt", "").replace("twd", "")
-    tag_map = {"btc": "bitcoin", "eth": "ethereum", "sol": "solana", "doge": "dogecoin"}
-    tag = tag_map.get(base, base)
-    url = f"https://cointelegraph.com/rss/tag/{urllib.parse.quote(tag)}"
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-    try:
-        req = urllib.request.Request(url, headers={"User-Agent": "AI-Investment-Committee/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            root = ET.fromstring(response.read().decode("utf-8"))
-    except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError, ET.ParseError, OSError):
-        return []
-
-    articles = []
-    for item in root.findall("./channel/item"):
-        title = item.findtext("title", default="").strip()
-        link = item.findtext("link", default="").strip()
-        published = item.findtext("pubDate", default="").strip()
+        topic = payload.get("topic", "未指定幣種")
+        prompt = f"Human: 你是一位專業的 AI 投資助理。目前畫面停留在【{topic}】。用戶提問：「{user_text}」。請用大約 30~50 字內簡短回答，若用戶詢問價格或行情，請參考以下最新市場即時價格資料：\n{prices_info}\n\nAssistant:"
+        
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 150,
+            "temperature": 0.5,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        })
+        
+        def _invoke():
+            response = bedrock_client.invoke_model(
+                modelId='us.anthropic.claude-sonnet-4-6',
+                body=body
+            )
+            return json.loads(response.get('body').read()).get('content')[0]['text']
+            
         try:
-            published_at = parsedate_to_datetime(published)
-            if published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=timezone.utc)
-        except (TypeError, ValueError, IndexError):
-            continue
-        if published_at < cutoff or not title:
-            continue
-        articles.append({"title": title, "link": link, "pubDate": published})
-        if len(articles) >= max_items:
-            break
-    return articles
+            res_text = BedrockGate.invoke(_invoke)
+            self.respond_json({"text": res_text.strip()})
+        except Exception as e:
+            print(f"Chat Assistant Error: {e}")
+            self.respond_json({"text": f"連線異常，無法回應。({str(e)})"})
 
+    def handle_chat_debate(self, payload):
+        history = payload.get("history", [])
+        
+        history_str = ""
+        for msg in history:
+            name = msg.get("name", "Unknown")
+            text = msg.get("text", "")
+            history_str += f"[{name}]: {text}\n"
 
-def request_claude_analysis(market, period, indicators, news):
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not configured on the local server.")
-    model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001").strip()
-    symbol = market.upper().replace("USDT", "/USDT").replace("TWD", "/TWD")
-    prompt = {
-        "asset": symbol,
-        "candle_period_minutes": period,
-        "technical_indicators": indicators,
-        "news_last_7_days": news,
-        "output_contract": {
-            "technical_analysis": "Traditional Chinese, 120-180 words",
-            "news_analysis": "Traditional Chinese, 100-150 words; state the limitation if the news list is empty",
-            "overall_summary": "Traditional Chinese, 80-130 words; research only, no buy/sell instruction",
-            "risk_level": "low, medium, or high",
-            "watchpoints": ["Traditional Chinese item", "Traditional Chinese item", "Traditional Chinese item"]
-        },
-    }
-    instruction = (
-        "You are a careful crypto research analyst. Use only the supplied JSON data. "
-        "Return only valid JSON matching output_contract. Do not use Markdown. Do not give trading instructions, "
-        "guarantee outcomes, invent unavailable news, or cite facts outside the provided data."
-    )
-    body = json.dumps({
-        "model": model,
-        "max_tokens": 1100,
-        "temperature": 0.2,
-        "system": instruction,
-        "messages": [{"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}],
-    }).encode("utf-8")
-    request = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=body,
-        headers={
-            "content-type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=75) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Claude API request failed ({exc.code}): {detail}") from exc
-    except (urllib.error.URLError, socket.timeout, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError("Claude API is unavailable.") from exc
+        def _invoke_single_agent(role_name, context):
+            if not getattr(sys.modules[__name__], 'bedrock_client', None):
+                return {"text": "Bedrock 未初始化"}
+            
+            topic = payload.get("topic", "目前鎖定的加密貨幣")
+            prompt = f"Human: 你現在是針對【{topic}】進行辯論的 AI 投資委員會「{role_name}」。\n以下是目前的辯論歷史紀錄：\n{history_str}\n請根據你的專業（{context}），針對最後一位人類使用者的發言進行反駁或贊同，提出你的觀點。回覆請簡短有力（40字內）。\n\nAssistant:"
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 150,
+                "temperature": 0.7,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            })
+            def _do_invoke():
+                response = bedrock_client.invoke_model(
+                    modelId='us.anthropic.claude-sonnet-4-6',
+                    body=body
+                )
+                return json.loads(response.get('body').read()).get('content')[0]['text']
+            
+            try:
+                res = BedrockGate.invoke(_do_invoke)
+                return {"text": res.strip()}
+            except Exception as e:
+                print(f"Bedrock Chat Error ({role_name}): {e}")
+                return {"text": f"無法回應 ({e})"}
 
-    text = "\n".join(
-        block.get("text", "") for block in payload.get("content", [])
-        if block.get("type") == "text"
-    ).strip()
-    try:
-        result = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("Claude returned an invalid analysis format.") from exc
-    if not isinstance(result, dict):
-        raise RuntimeError("Claude returned an invalid analysis format.")
-    return {
-        "technical_analysis": str(result.get("technical_analysis", ""))[:1800],
-        "news_analysis": str(result.get("news_analysis", ""))[:1600],
-        "overall_summary": str(result.get("overall_summary", ""))[:1400],
-        "risk_level": str(result.get("risk_level", "medium"))[:20],
-        "watchpoints": [str(item)[:240] for item in result.get("watchpoints", [])[:5]],
-    }
+        agents = [
+            {"agent": "tech", "name": "技術分析師", "icon": "📈", "color": "var(--primary)", "context": "技術指標與線圖"},
+            {"agent": "risk", "name": "風控長", "icon": "🛡️", "color": "var(--warning)", "context": "風險評估與保本"},
+            {"agent": "sent", "name": "情緒分析師", "icon": "🌐", "color": "var(--success)", "context": "市場貪婪恐慌情緒"},
+            {"agent": "behav", "name": "人格分析師", "icon": "🧠", "color": "var(--secondary)", "context": "投資人心理與紀律"}
+        ]
+        
+        responses = []
+        for ag in agents:
+            reply = _invoke_single_agent(ag["name"], ag["context"])
+            responses.append({
+                "agent": ag["agent"],
+                "name": ag["name"],
+                "icon": ag["icon"],
+                "color": ag["color"],
+                "text": reply["text"]
+            })
+            
+        self.respond_json({"debates": responses})
 
+    def handle_conclude_debate(self, payload):
+        history = payload.get("history", [])
+        
+        history_str = ""
+        for msg in history:
+            name = msg.get("name", "Unknown")
+            text = msg.get("text", "")
+            history_str += f"[{name}]: {text}\n"
+            
+        def _invoke_chair():
+            if not getattr(sys.modules[__name__], 'bedrock_client', None):
+                return '{"final_action": "HOLD", "summary": "Bedrock API 未連接"}'
+                
+            topic = payload.get("topic", "目前鎖定的加密貨幣")
+            prompt = f"Human: 你現在是 AI 投資委員會的「主席 Agent」。你們剛才針對【{topic}】進行了辯論。\n以下是剛剛的所有辯論紀錄：\n{history_str}\n請你總結所有代理人與人類的意見，進行最終決議。\n**警告：絕對禁止自行捏造（Hallucinate）任何未在上述對話中出現的具體數字、百分比或評分（例如：技術得分 43、風險 10 分等）。請嚴格依據對話內容進行純邏輯總結。**\n必須以嚴格的 JSON 格式輸出（不要有任何 markdown 標籤或多餘文字），格式如下：\n{{\"summary\": \"你的綜合點評(50字內)\", \"final_action\": \"BUY\" 或 \"SELL\" 或 \"HOLD\"}}\n\nAssistant:"
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 200,
+                "temperature": 0.5,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            })
+            response = bedrock_client.invoke_model(
+                modelId='us.anthropic.claude-sonnet-4-6',
+                body=body
+            )
+            return json.loads(response.get('body').read()).get('content')[0]['text']
+            
+        try:
+            result = BedrockGate.invoke(_invoke_chair)
+            clean_result = result.replace('```json', '').replace('```', '').strip()
+            data = json.loads(clean_result)
+        except Exception as e:
+            print(f"Chair Parsing Error: {e}\nRaw output: {result if 'result' in locals() else 'None'}")
+            data = {"final_action": "HOLD", "summary": "API 或 JSON 解析失敗，強制觀望。"}
+            
+        self.respond_json(data)
+
+    def handle_extract_topic(self, payload):
+        user_text = payload.get("text", "")
+        if not user_text:
+            self.respond_json({"topic": "btcusdt"})
+            return
+            
+        prompt = f"Human: 你是一個虛擬貨幣實體識別助理。使用者輸入了一段文字：「{user_text}」。請判斷使用者正在討論哪一個加密貨幣。請直接回傳該貨幣對 USDT 的交易對代碼（例如：btcusdt, ethusdt, solusdt, dogeusdt）。如果無法判斷，請直接回傳 'btcusdt'。請勿輸出任何其他文字或標點符號，只能輸出代碼本身。\n\nAssistant:"
+        
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 50,
+            "temperature": 0.0,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        })
+        
+        def _invoke():
+            if getattr(sys.modules[__name__], 'bedrock_client', None):
+                res = bedrock_client.invoke_model(
+                    modelId='us.anthropic.claude-sonnet-4-6',
+                    body=body
+                )
+                return json.loads(res.get('body').read()).get('content')[0]['text'].strip().lower()
+            return "btcusdt"
+            
+        try:
+            topic = BedrockGate.invoke(_invoke)
+            # Basic sanitization
+            topic = topic.replace(" ", "").replace("\n", "").replace("`", "")
+            if "doge" in topic: topic = "dogeusdt"
+            elif "sol" in topic: topic = "solusdt"
+            elif "eth" in topic: topic = "ethusdt"
+            elif "btc" in topic: topic = "btcusdt"
+            else: topic = "btcusdt"
+            
+            self.respond_json({"topic": topic})
+        except Exception as e:
+            print(f"Extract Topic Error: {e}")
+            self.respond_json({"topic": "btcusdt"})
 
 def fetch_max_ticker(market):
     """向 MAX 取得即時報價。
@@ -681,40 +693,36 @@ def fetch_max_ticker(market):
             "error": detail,
         }
 
-def start_server():
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer((HOST, PORT), CommitteeAPIHandler) as httpd:
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    allow_reuse_address = True
+
+def run_server():
+    with ThreadedTCPServer((HOST, PORT), CommitteeAPIHandler) as httpd:
         print(f"2/3 API Server is running indefinitely on http://localhost:{PORT}")
         httpd.serve_forever()
 
-def main():
-    # 背景啟動 API 伺服器
-    server_thread = threading.Thread(target=start_server, daemon=True)
-    server_thread.start()
-    time.sleep(1)
+# 背景啟動 API 伺服器
+server_thread = threading.Thread(target=run_server, daemon=True)
+server_thread.start()
+time.sleep(1)
 
-    # 3. 開啟預設瀏覽器
-    print("\n3/3 Opening Web UI in Browser...")
-    url = "http://localhost:8080/"
-    webbrowser.open(url)
+# 3. 開啟預設瀏覽器
+print("\n3/3 Opening Web UI in Browser...")
+url = "http://localhost:8080/"
+webbrowser.open(url)
 
-    print("\n==================================================================")
-    print("SUCCESS: System is UP and RUNNING!")
-    print("API Endpoints Ready:")
-    print("  - GET  http://localhost:8080/api/report")
-    print("  - GET  http://localhost:8080/api/market")
-    print("  - POST http://localhost:8080/api/trade")
-    print("  - POST http://localhost:8080/api/ai-analysis")
-    print("==================================================================")
-    print("Press Ctrl + C in this terminal to shutdown the server.\n")
+print("\n==================================================================")
+print("SUCCESS: System is UP and RUNNING!")
+print("API Endpoints Ready:")
+print("  - GET  http://localhost:8080/api/report")
+print("  - GET  http://localhost:8080/api/market")
+print("  - POST http://localhost:8080/api/trade")
+print("==================================================================")
+print("Press Ctrl + C in this terminal to shutdown the server.\n")
 
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\nStopping API Server...")
-        print("System Shutdown Complete.")
-
-
-if __name__ == "__main__":
-    main()
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\nStopping API Server...")
+    print("System Shutdown Complete.")

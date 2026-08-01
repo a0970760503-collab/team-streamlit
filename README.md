@@ -13,10 +13,6 @@ A fully integrated trading terminal and automated analysis engine. This system a
 - **Personalized Risk Modeling**: R-based data pipeline for extracting user trading habits and risk tolerance from CSV transaction logs.
 - **End-to-End Execution**: Secure order execution engine with payload signing and dynamic asset updates via the MAX Exchange API.
 
-### Claude analysis panel
-- **Technical + news synthesis**: The `✨ Claude` button in a market's K-line view sends server-fetched MAX candles and the latest seven days of matching Cointelegraph RSS headlines to Anthropic Claude.
-- **Key safety boundary**: `ANTHROPIC_API_KEY` is read only by `start_demo.py`; the browser never receives it. The result is presented as a research summary, not a trade instruction.
-
 ### Interface & Graphics
 - **Real-Time Market Data**: Live integration with MAX API for Ticker and Depth (Orderbook).
 - **Interactive Technical Charts**: Native SVG-based rendering with interactive crosshairs and multi-period timeframes, supporting magnetic price snapping.
@@ -36,7 +32,6 @@ The repository includes an orchestration script that automates the backend API s
 
 1. Clone the repository and navigate to the root directory.
 2. Rename `.env.example` to `.env` and fill in your API keys.
-   - To enable the Claude analysis panel, set `ANTHROPIC_API_KEY=...`. Optionally set `CLAUDE_MODEL`; the default is `claude-haiku-4-5-20251001`.
 3. Ensure you have the necessary dependencies installed for both Python and Java.
 4. Execute the binary via terminal or command prompt:
    ```bash
