@@ -1793,3 +1793,145 @@ function setupChartInteractions(svg) {
         if(tooltip) tooltip.innerHTML = `<span>高:<span style="color:#fff">--</span></span><span>低:<span style="color:#fff">--</span></span>`;
     });
 }
+
+// --- 直播間聊天室 (Live Chat) 邏輯 ---
+
+function switchBottomTab(tabName) {
+    const tabNews = document.getElementById('tab-news');
+    const tabChat = document.getElementById('tab-chat');
+    const contentNews = document.getElementById('phone-news-list');
+    const contentChat = document.getElementById('phone-chat-container');
+    
+    if (tabName === 'news') {
+        tabNews.style.color = 'var(--warning)';
+        tabNews.style.borderBottomColor = 'var(--warning)';
+        tabChat.style.color = 'var(--text-muted)';
+        tabChat.style.borderBottomColor = 'transparent';
+        contentNews.style.display = 'flex';
+        contentChat.style.display = 'none';
+        stopLiveChatSimulation();
+    } else {
+        tabNews.style.color = 'var(--text-muted)';
+        tabNews.style.borderBottomColor = 'transparent';
+        tabChat.style.color = 'var(--text-main)';
+        tabChat.style.borderBottomColor = 'var(--success)';
+        contentNews.style.display = 'none';
+        contentChat.style.display = 'flex';
+        
+        const container = document.getElementById('live-chat-messages');
+        container.scrollTop = container.scrollHeight;
+        startLiveChatSimulation();
+    }
+}
+
+function sendLiveMessage() {
+    const input = document.getElementById('live-chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    
+    appendLiveMessage(text, 'user', '我');
+    input.value = '';
+    
+    simulateLiveChatResponse(text);
+}
+
+function appendLiveMessage(text, senderType, senderName) {
+    const container = document.getElementById('live-chat-messages');
+    const msgBlock = document.createElement('div');
+    msgBlock.className = `live-msg ${senderType}`;
+    msgBlock.style.opacity = '0';
+    msgBlock.style.animation = 'fadeInMsg 0.4s ease forwards';
+    
+    if (senderType === 'ai') senderName = '🤖 ' + senderName;
+    
+    msgBlock.innerHTML = `
+        <span class="name">${senderName}</span>
+        <span class="text">${text}</span>
+    `;
+    
+    container.appendChild(msgBlock);
+    container.scrollTop = container.scrollHeight;
+}
+
+let liveChatSimInterval = null;
+
+function startLiveChatSimulation() {
+    if (liveChatSimInterval) clearInterval(liveChatSimInterval);
+    liveChatSimInterval = setInterval(() => {
+        const otherUsers = ['CryptoKing', 'MoonBoy99', '韭菜一號', 'TraderX', '大戶哥', '合約戰神', '梭哈就對了', '分析師小陳', '賺爛了', '套牢中'];
+        const responses = [
+            '這波行情真的看不懂...',
+            '有人要一起做多嗎？',
+            '我已經平倉觀望了',
+            '太刺激了吧！',
+            '今晚 CPI 數據要公佈了，大家小心',
+            '空軍集合！',
+            '多軍大獲全勝🚀',
+            '剛爆倉了，還有機會嗎？',
+            '我感覺要跌了，快逃',
+            '這支幣還有救嗎？',
+            '突破壓力位了！',
+            '市場有點過熱了吧？',
+            '幹，又被掃損了',
+            '真的一直洗盤誒'
+        ];
+        
+        const randomUser = otherUsers[Math.floor(Math.random() * otherUsers.length)];
+        const randomRes = responses[Math.floor(Math.random() * responses.length)];
+        appendLiveMessage(randomRes, 'other', randomUser);
+        
+        // 偶爾讓 AI 對模擬用戶的危險發言主動回覆
+        if (Math.random() > 0.8) {
+            triggerAIResponseIfKeyword(randomRes);
+        }
+    }, Math.floor(Math.random() * 5000) + 3000); // 3 ~ 8 秒隨機發一句
+}
+
+function stopLiveChatSimulation() {
+    if (liveChatSimInterval) clearInterval(liveChatSimInterval);
+}
+
+// 模擬呼叫真實 Claude API 的 Promise，方便未來串接真實後端
+async function callRealClaudeAPI(userText) {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            let aiMsg = `分析當前市場狀態... 目前呈現震盪整理，建議嚴守紀律，多看少做。`;
+            
+            if (userText.includes('市場過熱') || userText.includes('過熱')) {
+                aiMsg = `⚠️ 偵測到「過熱」訊號：目前市場情緒確實出現 FOMO 極值，建議您檢查持倉水位，避免追高風險。`;
+            } else if (userText.includes('幹') || userText.includes('靠北') || userText.includes('媽的') || userText.includes('爆倉')) {
+                aiMsg = `🚨 投資人格偵測：您的語氣顯示可能受到情緒影響 (Tilt)。強烈建議您暫停交易，離開盤面休息一下，避免連續虧損。`;
+            } else if (userText.includes('快逃') || userText.includes('要跌')) {
+                aiMsg = `技術面顯示下方支撐在 58,000 附近，若跌破可能引發連鎖反應，請設定好停損。`;
+            } else if (userText.includes('做多') || userText.includes('🚀')) {
+                aiMsg = `突破關鍵壓力位確實有動能，但仍需提防假突破，請以小倉位試單。`;
+            } else if (userText.toLowerCase().includes('@ai')) {
+                let cleanText = userText.replace(/@ai/ig, '').trim();
+                if (cleanText) {
+                    aiMsg = `針對您提到的「${cleanText}」，目前技術指標動能不足，請留意後續風險。建議點擊商品進入我的專屬面板查看詳細解析！`;
+                }
+            }
+            resolve(aiMsg);
+        }, 1500);
+    });
+}
+
+function triggerAIResponseIfKeyword(text) {
+    const hasAIKeyword = text.toLowerCase().includes('@ai') || 
+                         text.includes('分析') || text.includes('走勢') ||
+                         text.includes('市場過熱') || text.includes('過熱') ||
+                         text.includes('幹') || text.includes('靠北') || text.includes('媽的') || text.includes('爆倉') ||
+                         text.includes('快逃') || text.includes('要跌');
+    
+    if (hasAIKeyword) {
+        // 使用 async 呼叫模擬的 Claude API
+        callRealClaudeAPI(text).then((aiResponse) => {
+            appendLiveMessage(aiResponse, 'ai', 'AI 助理');
+        });
+    }
+}
+
+function simulateLiveChatResponse(userText) {
+    // 檢查使用者的輸入是否觸發 AI 關鍵字
+    triggerAIResponseIfKeyword(userText);
+}
