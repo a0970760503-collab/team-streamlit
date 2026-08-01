@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ai-invest-committee-v5';
+const CACHE_NAME = 'ai-invest-committee-v6';
 const urlsToCache = [
     './',
     './index.html',
@@ -12,20 +12,21 @@ self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
             .then(cache => cache.addAll(urlsToCache))
+            .then(() => self.skipWaiting())
     );
 });
 
 self.addEventListener('fetch', event => {
-    // We only cache GET requests that are not API requests to ensure fresh data
+    // Keep API data live and always fetch the current HTML shell first.
     if (event.request.method === 'GET' && !event.request.url.includes('/api/')) {
         event.respondWith(
-            caches.match(event.request)
+            fetch(event.request)
                 .then(response => {
-                    if (response) {
-                        return response;
-                    }
-                    return fetch(event.request);
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+                    return response;
                 })
+                .catch(() => caches.match(event.request))
         );
     }
 });
@@ -41,6 +42,6 @@ self.addEventListener('activate', event => {
                     }
                 })
             );
-        })
+        }).then(() => self.clients.claim())
     );
 });
