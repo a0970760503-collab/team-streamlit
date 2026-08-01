@@ -503,6 +503,7 @@ function generateDynamicSpeech(agent, data) {
 }
 
 let debateHistory = [];
+let latestChairDecision = { summary: '', action: 'HOLD' };
 
 // 展示模式採用固定劇本；使用者仍可在下方「加入討論」提出自己的觀點。
 const DEMO_COMMITTEE_SCRIPT = [
@@ -570,6 +571,30 @@ function debateHistoryForApi() {
     })).filter(item => item.text);
 }
 
+function researchAction(value) {
+    const action = String(value || '').toUpperCase();
+    return ['BUY', 'SELL', 'HOLD'].includes(action) ? action : 'HOLD';
+}
+
+async function renderChairDecision(data) {
+    const chair = Array.isArray(data.debates)
+        ? data.debates.find(reply => reply.agent === 'chair' && reply.text)
+        : null;
+    if (!chair) throw new Error('主席統整內容不完整。');
+
+    await renderChatMessage({ type: 'sys', text: '⚖️ 四位委員發言完成，主席正在協調共識與分歧…' });
+    debateHistory.push({ name: chair.name, text: chair.text, role: 'agent' });
+    await renderChatMessage(chair);
+    latestChairDecision = { summary: chair.text, action: researchAction(data.final_action) };
+    if (!globalData) globalData = JSON.parse(JSON.stringify(mockData));
+    globalData.investment_committee = {
+        ...(globalData.investment_committee || {}),
+        final_action: latestChairDecision.action,
+        chair_summary: latestChairDecision.summary
+    };
+    updateUIWithData(globalData);
+}
+
 async function startAiDebate(initialUserText = null) {
     document.getElementById('tab-btn-debate').style.display = 'block';
     switchTab('debate');
@@ -582,6 +607,7 @@ async function startAiDebate(initialUserText = null) {
     actions.style.display = 'none';
     debateFinished = false;
     debateHistory = [];
+    latestChairDecision = { summary: '', action: 'HOLD' };
 
     const prompt = String(initialUserText || `請以繁體中文就 ${currentTopic || currentMarket.toUpperCase()} 說明目前可觀察的市場資訊、主要不確定性與研究重點。內容僅供教育與研究參考，不構成投資建議。`).trim();
     debateHistory.push({ name: '使用者', text: prompt, role: 'user' });
@@ -593,13 +619,14 @@ async function startAiDebate(initialUserText = null) {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'AI 委員會暫時無法回應。');
-        const replies = Array.isArray(data.debates) ? data.debates : [];
-        if (!replies.length) throw new Error('AI 回應格式不完整。');
+        const replies = Array.isArray(data.debates) ? data.debates.filter(reply => reply.agent !== 'chair') : [];
+        if (replies.length !== 4) throw new Error('四位委員的辯論內容不完整。');
         await renderToolUseStatus(data.toolCalls);
         for (const reply of replies) {
             debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
             await renderChatMessage(reply);
         }
+        await renderChairDecision(data);
     } catch (error) {
         await renderChatMessage({ type: 'sys', text: `AI 委員會暫時無法回應：${error.message}。你仍可結束本次討論，系統會標示為未完成的研究紀錄。` });
     } finally {
@@ -659,26 +686,7 @@ function toggleDebateInput() {
 async function endAiDebate() {
     const actions = document.getElementById('decision-btn-area');
     if (actions) actions.style.display = 'none';
-    await renderChatMessage({ type: 'sys', text: '正在請主席統整四位委員的共識、分歧與研究策略卡…' });
-    let action = 'HOLD';
-    let summary = '本次 AI 討論未能完成最後摘要，因此系統不產生交易結論。請以後續研究與風險評估為準；內容不構成投資建議。';
-    try {
-        const response = await apiFetch('/api/debate-message', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ market: currentMarket, message: '請擔任主席，依據 discussion_context 中本輪四位委員內容，統整共同證據、分歧或不確定性、後續研究／風險管理重點。最後產出研究策略卡：買入觀察條件、賣出／避險觀察條件、維持觀察條件及本輪偏向；不得提供個人化下單指示，最後只用一句話提醒內容不構成投資建議。', discussionHistory: debateHistoryForApi() })
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'AI 摘要暫時不可用。');
-        action = ['BUY', 'SELL', 'HOLD'].includes(String(data.final_action).toUpperCase()) ? String(data.final_action).toUpperCase() : 'HOLD';
-        summary = data.summary || summary;
-        await renderToolUseStatus(data.toolCalls);
-    } catch (error) {
-        summary = `AI 摘要暫時不可用：${error.message}。${summary}`;
-    }
-    await renderChatMessage({ agent: 'chair', icon: '👑', name: '主席委員', color: '#ffd700', text: summary });
-    if (!globalData) globalData = JSON.parse(JSON.stringify(mockData));
-    globalData.investment_committee = { ...(globalData.investment_committee || {}), final_action: action };
-    updateUIWithData(globalData);
+    await renderChatMessage({ type: 'sys', text: '✅ 主席結論已產出，正在帶入資產配置與回測頁面…' });
     debateFinished = true;
     nav('page4');
     loadDecisionBacktest();
@@ -707,10 +715,11 @@ async function sendDebateMsg() {
 
         if (resData && resData.debates) {
             await renderToolUseStatus(resData.toolCalls);
-            for (let reply of resData.debates) {
+            for (let reply of resData.debates.filter(reply => reply.agent !== 'chair')) {
                 debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
                 await renderChatMessage(reply);
             }
+            await renderChairDecision(resData);
         }
     } catch (e) {
         console.error("Chat Debate Error:", e);
