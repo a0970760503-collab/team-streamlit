@@ -1406,7 +1406,7 @@ function showDashboardHomeView() {
         if (activeDashboardView === 'home') {
             fetchMaxAllTickers();
         }
-    }, 5000);
+    }, 15000); // 延長至 15 秒避免 MAX API Rate Limit 封鎖
 }
 
 function showKlineChartView() {
@@ -1428,7 +1428,7 @@ function showKlineChartView() {
             fetchMaxKlineData();
             fetchMaxMarketData();
         }
-    }, 5000);
+    }, 15000); // 延長至 15 秒避免 MAX API Rate Limit 封鎖
 }
 
 // 抓取多檔自選代幣即時報價 (對接 MAX 官方 Tickers API，具備 Mock 容錯)
