@@ -56,10 +56,8 @@ function updateDataSourceBanner() {
         banner = document.createElement('div');
         banner.id = 'data-source-banner';
         banner.setAttribute('role', 'alert');
-        banner.style.position = 'absolute';
-        banner.style.top = '0';
-        banner.style.left = '0';
-        banner.style.right = '0';
+        banner.style.position = 'relative'; // 改為 relative 以推開下方內容
+        banner.style.flexShrink = '0';
         banner.style.zIndex = '2000';
         banner.style.padding = '8px 12px';
         banner.style.background = 'rgba(255, 0, 60, 0.92)';
@@ -70,7 +68,13 @@ function updateDataSourceBanner() {
         banner.style.textAlign = 'center';
         banner.style.letterSpacing = '0.3px';
         banner.style.boxShadow = '0 2px 12px rgba(255, 0, 60, 0.5)';
-        host.appendChild(banner);
+        
+        const dashboard = document.querySelector('.phone-dashboard');
+        if (dashboard) {
+            dashboard.insertBefore(banner, dashboard.firstChild);
+        } else {
+            host.appendChild(banner);
+        }
     }
 
     const reasons = Array.from(degradedChannels.entries())
@@ -1782,5 +1786,336 @@ function switchTab(tab) {
         astBtn.style.background = 'transparent';
         astBtn.style.border = '1px solid rgba(255,255,255,0.2)';
         astBtn.style.color = 'var(--text-muted)';
+    }
+}
+
+function sendLiveMessage() {
+    const input = document.getElementById('live-chat-input');
+    const text = input.value.trim();
+    if (!text) return;
+    
+    appendLiveMessage(text, 'user', '我');
+    input.value = '';
+    
+    simulateLiveChatResponse(text);
+}
+
+function appendLiveMessage(text, senderType, senderName) {
+    const container = document.getElementById('live-chat-messages');
+    const msgBlock = document.createElement('div');
+    msgBlock.className = `live-msg ${senderType}`;
+    msgBlock.style.opacity = '0';
+    msgBlock.style.animation = 'fadeInMsg 0.4s ease forwards';
+    
+    if (senderType === 'ai') senderName = '🤖 ' + senderName;
+    
+    msgBlock.innerHTML = `
+        <span class="name">${senderName}</span>
+        <span class="text">${text}</span>
+    `;
+    
+    container.appendChild(msgBlock);
+    container.scrollTop = container.scrollHeight;
+}
+
+let liveChatSimInterval = null;
+
+function startLiveChatSimulation() {
+    if (liveChatSimInterval) clearInterval(liveChatSimInterval);
+    liveChatSimInterval = setInterval(() => {
+        const otherUsers = ['CryptoKing', 'MoonBoy99', '韭菜一號', 'TraderX', '大戶哥', '合約戰神', '梭哈就對了', '分析師小陳', '賺爛了', '套牢中'];
+        const responses = [
+            '這波行情真的看不懂...',
+            '有人要一起做多嗎？',
+            '我已經平倉觀望了',
+            '太刺激了吧！',
+            '今晚 CPI 數據要公佈了，大家小心',
+            '空軍集合！',
+            '多軍大獲全勝🚀',
+            '剛爆倉了，還有機會嗎？',
+            '我感覺要跌了，快逃',
+            '這支幣還有救嗎？',
+            '突破壓力位了！',
+            '市場有點過熱了吧？',
+            '幹，又被掃損了',
+            '真的一直洗盤誒'
+        ];
+        
+        const randomUser = otherUsers[Math.floor(Math.random() * otherUsers.length)];
+        const randomRes = responses[Math.floor(Math.random() * responses.length)];
+        appendLiveMessage(randomRes, 'other', randomUser);
+        
+        // 偶爾讓 AI 對模擬用戶的危險發言主動回覆
+        if (Math.random() > 0.8) {
+            triggerAIResponseIfKeyword(randomRes);
+        } else if (Math.random() > 0.85) {
+            // 陣營 AI 總司令喊話
+            if (currentBullPct > 60) {
+                appendLiveMessage('兄弟們！空軍快不行了，繼續加倉把他們爆掉！🚀', 'ai', '🐂 多軍總司令');
+            } else if (currentBullPct < 40) {
+                appendLiveMessage('市場情緒太脆弱了，跟我一起做空，讓多軍見血！🩸', 'ai', '🐻 空軍總司令');
+            } else if (Math.random() > 0.5) {
+                appendLiveMessage('目前勢均力敵，多軍弟兄們別放棄，守住支撐！🛡️', 'ai', '🐂 多軍總司令');
+            } else {
+                appendLiveMessage('多軍還在死撐，空軍集合，準備倒貨！📉', 'ai', '🐻 空軍總司令');
+            }
+        }
+    }, Math.floor(Math.random() * 5000) + 3000); // 3 ~ 8 秒隨機發一句
+}
+
+function stopLiveChatSimulation() {
+    if (liveChatSimInterval) clearInterval(liveChatSimInterval);
+}
+
+// 模擬呼叫真實 Claude API 的 Promise，方便未來串接真實後端
+async function callRealClaudeAPI(userText) {
+    return new Promise((resolve) => {
+        setTimeout(() => {
+            let aiMsg = `分析當前市場狀態... 目前呈現震盪整理，建議嚴守紀律，多看少做。`;
+            
+            if (userText.includes('市場過熱') || userText.includes('過熱')) {
+                aiMsg = `⚠️ 偵測到「過熱」訊號：目前市場情緒確實出現 FOMO 極值，建議您檢查持倉水位，避免追高風險。`;
+            } else if (userText.includes('幹') || userText.includes('靠北') || userText.includes('媽的') || userText.includes('爆倉')) {
+                aiMsg = `🚨 投資人格偵測：您的語氣顯示可能受到情緒影響 (Tilt)。強烈建議您暫停交易，離開盤面休息一下，避免連續虧損。`;
+            } else if (userText.includes('快逃') || userText.includes('要跌')) {
+                aiMsg = `技術面顯示下方支撐在 58,000 附近，若跌破可能引發連鎖反應，請設定好停損。`;
+            } else if (userText.includes('做多') || userText.includes('🚀')) {
+                aiMsg = `突破關鍵壓力位確實有動能，但仍需提防假突破，請以小倉位試單。`;
+            } else if (userText.toLowerCase().includes('@ai')) {
+                let cleanText = userText.replace(/@ai/ig, '').trim();
+                if (cleanText) {
+                    aiMsg = `針對您提到的「${cleanText}」，目前技術指標動能不足，請留意後續風險。建議點擊商品進入我的專屬面板查看詳細解析！`;
+                }
+            }
+            resolve(aiMsg);
+        }, 1500);
+    });
+}
+
+function triggerAIResponseIfKeyword(text) {
+    const hasAIKeyword = text.toLowerCase().includes('@ai') || 
+                         text.includes('分析') || text.includes('走勢') ||
+                         text.includes('市場過熱') || text.includes('過熱') ||
+                         text.includes('幹') || text.includes('靠北') || text.includes('媽的') || text.includes('爆倉') ||
+                         text.includes('快逃') || text.includes('要跌');
+    
+    if (hasAIKeyword) {
+        // 使用 async 呼叫模擬的 Claude API
+        callRealClaudeAPI(text).then((aiResponse) => {
+            appendLiveMessage(aiResponse, 'ai', 'AI 助理');
+        });
+    }
+}
+
+function simulateLiveChatResponse(userText) {
+    // 檢查使用者的輸入是否觸發 AI 關鍵字
+    triggerAIResponseIfKeyword(userText);
+}
+
+// --- AI 多空陣營戰 (Faction War) 邏輯 ---
+
+let currentBullPct = 50;
+let userFaction = null;
+let factionWarInterval = null;
+
+function initFactionWar() {
+    if (factionWarInterval) clearInterval(factionWarInterval);
+    updateFactionUI();
+    factionWarInterval = setInterval(() => {
+        // 隨機變動 1~3%
+        const change = (Math.random() * 6 - 3);
+        currentBullPct = Math.max(10, Math.min(90, currentBullPct + change));
+        updateFactionUI();
+    }, 2000);
+}
+
+function updateFactionUI() {
+    const bullBar = document.getElementById('faction-bull-bar');
+    const bearBar = document.getElementById('faction-bear-bar');
+    const centerLine = document.getElementById('faction-center-line');
+    const bullPctText = document.getElementById('faction-bull-pct');
+    const bearPctText = document.getElementById('faction-bear-pct');
+    
+    if (bullBar && bearBar && centerLine) {
+        bullBar.style.width = `${currentBullPct}%`;
+        bearBar.style.width = `${100 - currentBullPct}%`;
+        centerLine.style.left = `${currentBullPct}%`;
+        
+        bullPctText.innerText = `${currentBullPct.toFixed(1)}%`;
+        bearPctText.innerText = `${(100 - currentBullPct).toFixed(1)}%`;
+    }
+}
+
+function joinFaction(faction) {
+    if (userFaction) return; // 已經加入過
+    userFaction = faction;
+    
+    const btnBull = document.getElementById('btn-join-bull');
+    const btnBear = document.getElementById('btn-join-bear');
+    
+    btnBull.disabled = true;
+    btnBear.disabled = true;
+    
+    if (faction === 'bull') {
+        btnBull.innerHTML = '🐂 已加入多軍';
+        btnBull.style.background = 'rgba(57,255,20,0.3)';
+        btnBull.style.boxShadow = '0 0 15px var(--success)';
+        btnBear.style.opacity = '0.3';
+        currentBullPct += 15; // 給予多軍 15% 激勵，視覺效果明顯
+    } else {
+        btnBear.innerHTML = '🐻 已加入空軍';
+        btnBear.style.background = 'rgba(255,0,85,0.3)';
+        btnBear.style.boxShadow = '0 0 15px var(--danger)';
+        btnBull.style.opacity = '0.3';
+        currentBullPct -= 15; // 給予空軍 15% 激勵
+    }
+    
+    updateFactionUI();
+    
+    // 陣營加入動畫回饋 (聊天室推播)
+    setTimeout(() => {
+        const factionName = faction === 'bull' ? '多軍' : '空軍';
+        appendLiveMessage(`系統廣播：一位勇敢的交易者加入了 ${factionName}！為信仰充值！`, 'ai', '⚔️ 系統');
+    }, 500);
+}
+
+// 啟動陣營戰隨機波動
+initFactionWar();
+
+// --- 👿 毒舌 AI 投資教練 (Toxic AI Coach) 邏輯 ---
+
+let toxicTypeTimeout = null;
+
+function openToxicCoach() {
+    const modal = document.getElementById('toxic-ai-modal');
+    modal.style.display = 'flex';
+    
+    // 生成隨機 DNA 數據
+    const traits = [
+        { label: 'FOMO 指數', val: Math.floor(Math.random() * 40) + 60 },
+        { label: '凹單毅力', val: Math.floor(Math.random() * 50) + 50 },
+        { label: '停損果斷', val: Math.floor(Math.random() * 30) },
+        { label: '韭菜純度', val: Math.floor(Math.random() * 30) + 70 },
+        { label: '合約信仰', val: Math.floor(Math.random() * 60) + 40 },
+        { label: '做多執念', val: Math.floor(Math.random() * 50) + 50 }
+    ];
+    
+    drawRadarChart(traits);
+    
+    // 毒舌語錄庫
+    const roasts = [
+        "掃描完你的交易紀錄了。老實說，我奶奶擲筊的勝率都比你高。上週在山頂全倉做多，跌了又死不肯停損。你這不是在投資，這是在做公益。",
+        "你的投資 DNA 顯示出極致的『高買低賣』天賦。別人恐懼你貪婪，別人貪婪你破產。建議直接把錢捐給流浪狗，至少還能聽見幾聲汪汪。",
+        "看著你的倉位，我的中央處理器差點過熱。你的操作邏輯簡直像是閉著眼睛按鍵盤。再這樣下去，你的存款餘額很快就會跟你的智商一樣歸零了。",
+        "驚人的韭菜純度高達 99%！你完美避開了所有賺錢的機會，精準踩中每一次暴跌。建議你把手機放下，去公園找個好位子準備睡紙箱。"
+    ];
+    
+    const randomRoast = roasts[Math.floor(Math.random() * roasts.length)];
+    
+    const textContainer = document.getElementById('toxic-coach-text');
+    textContainer.innerHTML = ''; // 清空
+    
+    if (toxicTypeTimeout) clearTimeout(toxicTypeTimeout);
+    typeWriterEffect(randomRoast, textContainer, 0);
+}
+
+function closeToxicCoach() {
+    const modal = document.getElementById('toxic-ai-modal');
+    modal.style.display = 'none';
+    if (toxicTypeTimeout) clearTimeout(toxicTypeTimeout);
+}
+
+function drawRadarChart(traits) {
+    const svg = document.getElementById('dna-radar');
+    svg.innerHTML = ''; // 清空
+    
+    const cx = 100, cy = 100, r = 70;
+    const numPoints = traits.length;
+    const angleStep = (Math.PI * 2) / numPoints;
+    
+    // 畫背景網格
+    for (let level = 1; level <= 4; level++) {
+        let gridPath = '';
+        const levelR = r * (level / 4);
+        for (let i = 0; i < numPoints; i++) {
+            const x = cx + levelR * Math.cos(i * angleStep - Math.PI/2);
+            const y = cy + levelR * Math.sin(i * angleStep - Math.PI/2);
+            gridPath += (i === 0 ? 'M' : 'L') + `${x},${y} `;
+        }
+        gridPath += 'Z';
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', gridPath);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', 'rgba(255,0,85,0.2)');
+        path.setAttribute('stroke-width', '1');
+        svg.appendChild(path);
+    }
+    
+    // 畫輻射線與標籤
+    for (let i = 0; i < numPoints; i++) {
+        const x = cx + r * Math.cos(i * angleStep - Math.PI/2);
+        const y = cy + r * Math.sin(i * angleStep - Math.PI/2);
+        
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', cx);
+        line.setAttribute('y1', cy);
+        line.setAttribute('x2', x);
+        line.setAttribute('y2', y);
+        line.setAttribute('stroke', 'rgba(255,0,85,0.2)');
+        line.setAttribute('stroke-width', '1');
+        svg.appendChild(line);
+        
+        // 標籤
+        const textX = cx + (r + 18) * Math.cos(i * angleStep - Math.PI/2);
+        const textY = cy + (r + 18) * Math.sin(i * angleStep - Math.PI/2);
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', textX);
+        text.setAttribute('y', textY + 4);
+        text.setAttribute('fill', '#fff');
+        text.setAttribute('font-size', '10px');
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = traits[i].label;
+        svg.appendChild(text);
+    }
+    
+    // 畫數值多邊形
+    let dataPath = '';
+    for (let i = 0; i < numPoints; i++) {
+        const valR = r * (traits[i].val / 100);
+        const x = cx + valR * Math.cos(i * angleStep - Math.PI/2);
+        const y = cy + valR * Math.sin(i * angleStep - Math.PI/2);
+        dataPath += (i === 0 ? 'M' : 'L') + `${x},${y} `;
+    }
+    dataPath += 'Z';
+    
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', dataPath);
+    path.setAttribute('fill', 'rgba(255,0,85,0.4)');
+    path.setAttribute('stroke', 'var(--danger)');
+    path.setAttribute('stroke-width', '2');
+    path.style.filter = 'drop-shadow(0 0 5px var(--danger))';
+    
+    // 加入出場動畫
+    path.style.opacity = '0';
+    path.style.transform = 'scale(0.5)';
+    path.style.transformOrigin = 'center';
+    path.style.transition = 'all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    
+    svg.appendChild(path);
+    
+    // 觸發動畫
+    setTimeout(() => {
+        path.style.opacity = '1';
+        path.style.transform = 'scale(1)';
+    }, 100);
+}
+
+function typeWriterEffect(text, container, index) {
+    if (index < text.length) {
+        container.innerHTML += text.charAt(index);
+        toxicTypeTimeout = setTimeout(() => {
+            typeWriterEffect(text, container, index + 1);
+        }, 40); // 打字速度
     }
 }

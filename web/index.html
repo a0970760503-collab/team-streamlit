@@ -383,8 +383,11 @@
             <!-- 首頁 Header -->
             <div style="padding: 16px; border-bottom: 1px solid rgba(0,240,255,0.15); display:flex; justify-content:space-between; align-items:center; background:#000;">
                 <span style="color:var(--primary); font-weight:bold; font-size:16px; letter-spacing:1px; text-shadow:0 0 5px var(--primary);">📊 市場行情</span>
-                <!-- 綜合搜尋框 -->
-                <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:120px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
+                <div style="display:flex; gap: 8px; align-items:center;">
+                    <button onclick="openToxicCoach()" style="background:rgba(255,0,85,0.15); border:1px solid var(--danger); color:var(--danger); border-radius:4px; padding:4px 8px; font-size:11px; cursor:pointer; font-weight:bold; box-shadow: 0 0 5px rgba(255,0,85,0.4); transition: 0.2s;" onmouseover="this.style.boxShadow='0 0 10px rgba(255,0,85,0.8)'" onmouseout="this.style.boxShadow='0 0 5px rgba(255,0,85,0.4)'">👿 毒舌診斷</button>
+                    <!-- 綜合搜尋框 -->
+                    <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:100px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
+                </div>
             </div>
             
             <!-- 行情自選列表區 -->
@@ -446,6 +449,24 @@
                         <div id="kline-tooltip" style="color:var(--text-muted); font-size:9.5px; display:flex; gap:6px;">
                             <span>高:<span id="kline-high" style="color:#fff">--</span></span>
                             <span>低:<span id="kline-low" style="color:#fff">--</span></span>
+                        </div>
+                    </div>
+                    
+                    <!-- 第四列：AI 多空陣營戰 (Faction War UI) -->
+                    <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; margin-bottom:4px; padding:4px 6px; background:rgba(255,255,255,0.02); border-radius:6px; border:1px solid rgba(255,255,255,0.05);" id="faction-war-container">
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:bold;">
+                            <span style="color:var(--success); text-shadow:0 0 5px rgba(57,255,20,0.5);">🐂 多軍 <span id="faction-bull-pct">50%</span></span>
+                            <span style="color:var(--text-muted); font-size:9px; letter-spacing:1px;">⚔️ 陣營勢力戰</span>
+                            <span style="color:var(--danger); text-shadow:0 0 5px rgba(255,0,85,0.5);">🐻 空軍 <span id="faction-bear-pct">50%</span></span>
+                        </div>
+                        <div style="width:100%; height:6px; background:#222; border-radius:3px; display:flex; overflow:hidden; position:relative; box-shadow:inset 0 0 5px #000;">
+                            <div id="faction-bull-bar" style="height:100%; width:50%; background:linear-gradient(90deg, rgba(57,255,20,0.2), var(--success)); box-shadow:0 0 10px var(--success); transition:width 0.5s ease-out;"></div>
+                            <div id="faction-bear-bar" style="height:100%; width:50%; background:linear-gradient(270deg, rgba(255,0,85,0.2), var(--danger)); box-shadow:0 0 10px var(--danger); transition:width 0.5s ease-out;"></div>
+                            <div style="position:absolute; left:50%; top:0; bottom:0; width:2px; background:#fff; transform:translateX(-50%); box-shadow:0 0 5px #fff; z-index:2; transition:left 0.5s ease-out;" id="faction-center-line"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; margin-top:2px;">
+                            <button id="btn-join-bull" onclick="joinFaction('bull')" style="flex:1; background:rgba(57,255,20,0.1); border:1px solid rgba(57,255,20,0.3); color:var(--success); border-radius:4px; padding:4px 0; font-size:10px; font-weight:bold; cursor:pointer; transition:0.3s;" onmouseover="if(!this.disabled) { this.style.background='rgba(57,255,20,0.3)'; this.style.boxShadow='0 0 8px var(--success)'; }" onmouseout="if(!this.disabled) { this.style.background='rgba(57,255,20,0.1)'; this.style.boxShadow='none'; }">站隊多軍</button>
+                            <button id="btn-join-bear" onclick="joinFaction('bear')" style="flex:1; background:rgba(255,0,85,0.1); border:1px solid rgba(255,0,85,0.3); color:var(--danger); border-radius:4px; padding:4px 0; font-size:10px; font-weight:bold; cursor:pointer; transition:0.3s;" onmouseover="if(!this.disabled) { this.style.background='rgba(255,0,85,0.3)'; this.style.boxShadow='0 0 8px var(--danger)'; }" onmouseout="if(!this.disabled) { this.style.background='rgba(255,0,85,0.1)'; this.style.boxShadow='none'; }">站隊空軍</button>
                         </div>
                     </div>
                 </div>
@@ -685,6 +706,39 @@
     <!-- 懸浮聊天按鈕 (定位於手機框內部) -->
     <div id="floating-chat-btn" onclick="toggleChatPanel()">
         🤖
+    </div>
+    
+    <!-- 👿 毒舌 AI 投資教練 Modal (全螢幕覆蓋) -->
+    <div id="toxic-ai-modal" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; flex-direction:column; padding:20px; backdrop-filter:blur(5px);">
+        <!-- 頂部關閉 -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="color:var(--danger); font-size:18px; font-weight:bold; font-family:monospace; text-shadow:0 0 10px var(--danger);">[ SYSTEM: 投資 DNA 解析 ]</span>
+            <span onclick="closeToxicCoach()" style="color:#fff; font-size:24px; cursor:pointer;">×</span>
+        </div>
+        
+        <!-- 雷達圖區塊 -->
+        <div style="width:100%; height:200px; display:flex; justify-content:center; align-items:center; position:relative; margin-bottom:20px;">
+            <svg id="dna-radar" width="200" height="200" viewBox="0 0 200 200">
+                <!-- 將由 JS 動態生成 -->
+            </svg>
+            <!-- 背景發光 -->
+            <div style="position:absolute; width:150px; height:150px; border-radius:50%; background:radial-gradient(circle, rgba(255,0,85,0.3) 0%, rgba(0,0,0,0) 70%); pointer-events:none;"></div>
+        </div>
+        
+        <!-- 打字機文字對話框 -->
+        <div style="flex:1; background:rgba(255,0,85,0.05); border:1px solid var(--danger); border-radius:8px; padding:16px; margin-bottom:20px; box-shadow:inset 0 0 15px rgba(255,0,85,0.2); position:relative; overflow-y:auto;">
+            <div style="position:absolute; top:-10px; left:16px; background:#000; padding:0 8px; color:var(--danger); font-weight:bold; font-size:12px;">👿 毒舌教練</div>
+            <div id="toxic-coach-text" style="color:#fff; font-size:14px; line-height:1.6; font-family:monospace;">
+                <!-- JS 打字機特效 -->
+            </div>
+            <span id="toxic-cursor" style="color:var(--danger); font-weight:bold; animation:blink 1s infinite;">_</span>
+        </div>
+        
+        <!-- 互動按鈕 -->
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            <button onclick="document.getElementById('home-market-search').focus(); closeToxicCoach();" style="width:100%; padding:14px; background:linear-gradient(90deg, #550011, var(--danger)); color:#fff; font-weight:bold; border:none; border-radius:8px; font-size:14px; cursor:pointer; box-shadow:0 0 15px rgba(255,0,85,0.5);">🔥 我不服！去下單翻本</button>
+            <button onclick="closeToxicCoach()" style="width:100%; padding:14px; background:transparent; color:var(--primary); font-weight:bold; border:1px solid var(--primary); border-radius:8px; font-size:14px; cursor:pointer;">🤖 教練救我 (開啟 AI 網格)</button>
+        </div>
     </div>
 </div>
 
