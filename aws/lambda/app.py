@@ -320,10 +320,10 @@ def request_debate_reply(market, user_message):
         except (ValueError, TypeError, KeyError, IndexError, json.JSONDecodeError, urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError, OSError) as exc:
             return {"error": f"Research tool unavailable: {type(exc).__name__}"}
 
-    system = """You are a careful Traditional-Chinese investment research committee in Mode B (tool use). You may autonomously use only the supplied public research tools when useful. Do not claim to use a tool you did not call. Never give personalized financial advice, buy/sell instructions, execution steps, guarantees, or wallet/account guidance. After tool use, return valid JSON only with keys technical, risk, chair. Each value must be Traditional Chinese; chair must state that the content is educational research, not investment advice."""
+    system = """You are a careful Traditional-Chinese investment research committee in Mode B (tool use). You may autonomously use only the supplied public research tools when useful. Do not claim to use a tool you did not call. Never give personalized financial advice, buy/sell instructions, execution steps, guarantees, or wallet/account guidance. After tool use, return valid JSON only with keys technical, risk, sentiment, behavior, chair. Each value must be Traditional Chinese; chair must state that the content is educational research, not investment advice."""
     prompt = {"market": market.upper(), "participant_message": user_message,
               "task": "Discuss the participant's point. Decide yourself whether public research tools are useful before replying.",
-              "output_contract": {"technical": "50-110 words", "risk": "50-110 words", "chair": "70-130 words"}}
+              "output_contract": {"technical": "45-80 words", "risk": "45-80 words", "sentiment": "45-80 words", "behavior": "45-80 words", "chair": "65-110 words"}}
     messages = [{"role": "user", "content": [{"text": json.dumps(prompt, ensure_ascii=False)}]}]
     tool_calls = []
     client = boto3.client("bedrock-runtime")
@@ -331,7 +331,7 @@ def request_debate_reply(market, user_message):
         for _ in range(4):
             response = client.converse(
                 modelId=os.environ.get("BEDROCK_MODEL", "us.amazon.nova-2-lite-v1:0"), system=[{"text": system}], messages=messages,
-                inferenceConfig={"maxTokens": 900, "temperature": 0.25}, toolConfig={"tools": tool_specs, "toolChoice": {"auto": {}}},
+                inferenceConfig={"maxTokens": 1200, "temperature": 0.25}, toolConfig={"tools": tool_specs, "toolChoice": {"auto": {}}},
             )
             assistant_message = response["output"]["message"]
             messages.append(assistant_message)
@@ -339,7 +339,13 @@ def request_debate_reply(market, user_message):
             if not uses:
                 text = "".join(item.get("text", "") for item in assistant_message.get("content", []) if isinstance(item, dict))
                 result = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
-                replies = {"technical": str(result.get("technical", ""))[:1200], "risk": str(result.get("risk", ""))[:1200], "chair": str(result.get("chair", ""))[:1400]}
+                replies = {
+                    "technical": str(result.get("technical", ""))[:1200],
+                    "risk": str(result.get("risk", ""))[:1200],
+                    "sentiment": str(result.get("sentiment", ""))[:1200],
+                    "behavior": str(result.get("behavior", ""))[:1200],
+                    "chair": str(result.get("chair", ""))[:1400],
+                }
                 if not all(replies.values()):
                     raise ValueError("Bedrock tool-use response was incomplete.")
                 return replies, tool_calls
@@ -423,6 +429,8 @@ def demo_debate_reply(market, user_message):
     return {
         "technical": f"[Demo mode] {market.upper()}: {market_context}. The technical agent treats the user's topic as a research question and would wait for a confirmed trend, volume, and risk limit before drawing conclusions.",
         "risk": f"[Demo mode] Risk agent response to “{topic}”: market data can move quickly and this simulation does not provide investment instructions. Consider uncertainty, position size, and a predefined stop condition.",
+        "sentiment": f"[Demo mode] Sentiment agent response to “{topic}”: do not treat a short-term headline or crowd reaction as proof. Verify sources and separate observable facts from market emotion.",
+        "behavior": f"[Demo mode] Behaviour agent response to “{topic}”: pause before reacting, compare the idea with a written plan, and avoid letting FOMO or loss aversion replace a predefined risk rule.",
         "chair": f"[Demo mode] The committee recorded the participant's point: “{topic}”. Based on the available information, the demonstration conclusion is HOLD / continue observing. This is an educational simulation, not a trading recommendation.",
     }
 
@@ -512,6 +520,8 @@ def lambda_handler(event, _context):
             debates = [
                 {"agent": "tech", "icon": "📈", "name": "技術 Agent", "color": "var(--primary)", "text": replies.get("technical", "")},
                 {"agent": "risk", "icon": "🛡️", "name": "風險 Agent", "color": "var(--warning)", "text": replies.get("risk", "")},
+                {"agent": "sent", "icon": "🌐", "name": "市場情緒 Agent", "color": "var(--success)", "text": replies.get("sentiment", "")},
+                {"agent": "behav", "icon": "🧠", "name": "行為觀察 Agent", "color": "var(--secondary)", "text": replies.get("behavior", "")},
                 {"agent": "chair", "icon": "👑", "name": "主席 Agent", "color": "#ffd700", "text": replies.get("chair", "")},
             ]
             return json_response(200, {
