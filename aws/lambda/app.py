@@ -445,6 +445,10 @@ def lambda_handler(event, _context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
     path, params = event.get("rawPath") or event.get("path", ""), event.get("queryStringParameters") or {}
     try:
+        # API Gateway forwards browser CORS preflight requests to this catch-all
+        # route. A successful response is required before a browser may POST.
+        if method == "OPTIONS":
+            return json_response(200, {"ok": True})
         if method == "GET" and path == "/api/report": return json_response(200, handle_report())
         if method == "GET" and path == "/api/market": return json_response(200, fetch_ticker(params.get("market", "soltwd")))
         if method == "GET" and path == "/api/backtest": return json_response(200, decision_backtest(params.get("market", "btcusdt"), params.get("action", "HOLD")))
