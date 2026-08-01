@@ -10,11 +10,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 
@@ -22,6 +23,8 @@ ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "web"
 COMMUNITY_MESSAGES: dict[str, list[dict[str, str]]] = {}
 MAX_API_URL = "https://max-api.maicoin.com"
+CMC_CONTENT_API_URL = "https://pro-api.coinmarketcap.com/v1/content/latest"
+GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 MARKET_PATTERN = re.compile(r"^[a-z0-9]{3,16}$")
 
 
@@ -35,7 +38,6 @@ def valid_market(value: str) -> str:
 def max_json(path: str, query: dict[str, str] | None = None):
     url = f"{MAX_API_URL}{path}"
     if query:
-        from urllib.parse import urlencode
         url = f"{url}?{urlencode(query)}"
     request = Request(url, headers={"User-Agent": "AI-Investment-Committee-LocalDemo/1.0"})
     with urlopen(request, timeout=8) as response:
@@ -89,6 +91,67 @@ def local_report():
     return {"currentPrice": quote["price"], "change24h": quote["change24h"], "dataSource": "live", "debates": debates,
             "committee": {"buyPercentage": 33, "holdPercentage": 34, "sellPercentage": 33, "finalDecision": "HOLD", "confidenceScore": 50},
             "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+def fallback_news(market: str) -> list[dict[str, str]]:
+    label = market.upper().replace("USDT", "/USDT").replace("TWD", "/TWD")
+    now = datetime.now(timezone.utc).isoformat()
+    return [
+        {"title": f"{label} 快訊展示：行情資料已連接至 MAX 公開 API", "link": "https://max.maicoin.com/", "pubDate": now},
+        {"title": "展示模式提醒：加密貨幣價格波動大，請先確認風險承受程度", "link": "https://max.maicoin.com/", "pubDate": now},
+    ]
+
+
+def cmc_news(market: str) -> list[dict[str, str]]:
+    api_key = os.environ.get("CMC_API_KEY", "").strip()
+    if not api_key:
+        return []
+    symbol = re.sub(r"(usdt|twd)$", "", market.lower()).upper()
+    url = f"{CMC_CONTENT_API_URL}?{urlencode({'symbol': symbol, 'limit': '8', 'news_type': 'news', 'language': 'zh-tw'})}"
+    request = Request(url, headers={
+        "User-Agent": "AI-Investment-Committee-LocalDemo/1.0",
+        "X-CMC_PRO_API_KEY": api_key,
+    })
+    with urlopen(request, timeout=8) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    news = []
+    for item in payload.get("data", [])[:8]:
+        title = str(item.get("title", "")).strip()
+        link = str(item.get("source_url", "")).strip()
+        pub_date = str(item.get("released_at") or item.get("created_at") or "").strip()
+        if title and link:
+            news.append({"title": title, "link": link, "pubDate": pub_date})
+    return news
+
+
+def market_news(market: str) -> tuple[list[dict[str, str]], str]:
+    try:
+        news = cmc_news(market)
+        if news:
+            return news, "live-cmc"
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        pass
+    symbol = re.sub(r"(usdt|twd)$", "", market.lower()).upper()
+    query = f"{symbol} cryptocurrency"
+    if symbol == "BTC":
+        query = "Bitcoin cryptocurrency"
+    try:
+        url = f"{GOOGLE_NEWS_RSS_URL}?{urlencode({'q': query, 'hl': 'zh-TW', 'gl': 'TW', 'ceid': 'TW:zh-Hant'})}"
+        request = Request(url, headers={"User-Agent": "AI-Investment-Committee-LocalDemo/1.0"})
+        with urlopen(request, timeout=8) as response:
+            root = ET.fromstring(response.read())
+        news = []
+        for item in root.findall("./channel/item")[:8]:
+            title = (item.findtext("title") or "").strip()
+            link = (item.findtext("link") or "").strip()
+            pub_date = (item.findtext("pubDate") or datetime.now(timezone.utc).isoformat()).strip()
+            if title and link:
+                news.append({"title": title, "link": link, "pubDate": pub_date})
+        if news:
+            return news, "live"
+    except (OSError, ET.ParseError, ValueError):
+        pass
+    return fallback_news(market), "demo-fallback"
 
 
 class DemoHandler(SimpleHTTPRequestHandler):
@@ -146,7 +209,9 @@ class DemoHandler(SimpleHTTPRequestHandler):
             except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
                 return self.json_response(HTTPStatus.BAD_GATEWAY, {"error": f"MAX data unavailable: {error}"})
         if route.path == "/api/news":
-            return self.json_response(HTTPStatus.OK, {"status": "success", "news": []})
+            market = params.get("market", ["BTC"])[0]
+            news, source = market_news(market)
+            return self.json_response(HTTPStatus.OK, {"status": "success", "source": source, "news": news})
         return super().do_GET()
 
     def do_POST(self):
