@@ -10,7 +10,8 @@ import socket
 import urllib.request
 import urllib.error
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 import random
 import threading
 import xml.etree.ElementTree as ET
@@ -23,6 +24,26 @@ web_index = os.path.join(base_dir, "web", "index.html")
 PORT = 8080
 # 僅綁定本機迴環，避免公共 Wi-Fi 未授權存取
 HOST = "127.0.0.1"
+
+
+def load_local_env():
+    """Load simple KEY=value pairs from .env without adding a third-party dependency."""
+    env_path = os.path.join(base_dir, ".env")
+    if not os.path.exists(env_path):
+        return
+    with open(env_path, "r", encoding="utf-8") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, value)
+
+
+load_local_env()
 
 print("==================================================================")
 print("AI Investment Committee Master Orchestrator Starting...")
@@ -108,14 +129,17 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        if parsed.path == "/api/trade":
+        if parsed.path in ("/api/trade", "/api/ai-analysis"):
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length).decode('utf-8')
             try:
                 payload = json.loads(post_data) if post_data else {}
             except:
                 payload = {}
-            self.handle_trade(payload)
+            if parsed.path == "/api/ai-analysis":
+                self.handle_ai_analysis(payload)
+            else:
+                self.handle_trade(payload)
         else:
             self.send_error(404, "Endpoint Not Found")
 
@@ -379,12 +403,249 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             ]
             self.respond_json({"status": "fallback", "news": fallback, "error": str(e)})
 
-    def respond_json(self, data):
-        self.send_response(200)
+    def handle_ai_analysis(self, payload):
+        market = str(payload.get("market", "btcusdt")).lower().strip()
+        if not market.isalnum() or not (3 <= len(market) <= 16):
+            self.respond_json({"error": "Invalid market symbol."}, status=400)
+            return
+
+        try:
+            period = int(payload.get("period", 60))
+        except (TypeError, ValueError):
+            period = 60
+        if period not in (1, 5, 15, 60, 240, 1440, 10080):
+            period = 60
+
+        try:
+            candles = fetch_max_klines(market, period, limit=120)
+            indicators = calculate_technical_indicators(candles)
+            news = fetch_recent_market_news(market, max_items=10)
+            analysis = request_claude_analysis(market, period, indicators, news)
+            self.respond_json({
+                "market": market.upper(),
+                "period": period,
+                "indicators": indicators,
+                "news": news,
+                "analysis": analysis,
+                "generatedAt": datetime.now(timezone.utc).isoformat(),
+            })
+        except ValueError as exc:
+            self.respond_json({"error": str(exc)}, status=400)
+        except RuntimeError as exc:
+            self.respond_json({"error": str(exc)}, status=503)
+        except Exception as exc:
+            print(f"[WARN] Claude analysis failed: {type(exc).__name__}: {exc}")
+            self.respond_json({"error": "AI analysis is temporarily unavailable. Please try again."}, status=502)
+
+    def respond_json(self, data, status=200):
+        self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+
+def fetch_max_klines(market, period, limit=120):
+    url = "https://max-api.maicoin.com/api/v2/k?" + urllib.parse.urlencode({
+        "market": market,
+        "period": period,
+        "limit": limit,
+    })
+    req = urllib.request.Request(url, headers={"User-Agent": "AI-Investment-Committee/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError,
+            json.JSONDecodeError, OSError) as exc:
+        raise RuntimeError("Market candle data is unavailable.") from exc
+
+    if not isinstance(payload, list) or len(payload) < 35:
+        raise ValueError("Not enough candle data to calculate technical indicators.")
+
+    candles = []
+    for item in payload:
+        if not isinstance(item, list) or len(item) < 6:
+            continue
+        try:
+            candles.append([float(item[index]) for index in range(6)])
+        except (TypeError, ValueError):
+            continue
+    if len(candles) < 35:
+        raise ValueError("Received incomplete candle data.")
+    return candles
+
+
+def sma(values, period):
+    if len(values) < period:
+        return None
+    return sum(values[-period:]) / period
+
+
+def ema_series(values, period):
+    if len(values) < period:
+        return []
+    result = [None] * (period - 1)
+    value = sum(values[:period]) / period
+    result.append(value)
+    multiplier = 2 / (period + 1)
+    for item in values[period:]:
+        value = (item - value) * multiplier + value
+        result.append(value)
+    return result
+
+
+def rsi(values, period=14):
+    if len(values) <= period:
+        return None
+    gains = []
+    losses = []
+    for index in range(1, period + 1):
+        change = values[index] - values[index - 1]
+        gains.append(max(change, 0))
+        losses.append(abs(min(change, 0)))
+    average_gain = sum(gains) / period
+    average_loss = sum(losses) / period
+    for index in range(period + 1, len(values)):
+        change = values[index] - values[index - 1]
+        average_gain = (average_gain * (period - 1) + max(change, 0)) / period
+        average_loss = (average_loss * (period - 1) + abs(min(change, 0))) / period
+    if average_loss == 0:
+        return 100.0
+    return 100 - (100 / (1 + average_gain / average_loss))
+
+
+def calculate_technical_indicators(candles):
+    closes = [item[4] for item in candles]
+    ema12 = ema_series(closes, 12)
+    ema26 = ema_series(closes, 26)
+    macd_values = [ema12[index] - ema26[index] for index in range(25, len(closes))]
+    signal_values = ema_series(macd_values, 9)
+    latest_close = closes[-1]
+    sma20 = sma(closes, 20)
+    sma50 = sma(closes, 50)
+    latest_rsi = rsi(closes, 14)
+    latest_macd = macd_values[-1]
+    latest_signal = signal_values[-1]
+
+    score = 0
+    score += 1 if latest_close > sma20 else -1
+    score += 1 if sma20 > sma50 else -1
+    score += 1 if 50 <= latest_rsi <= 70 else 0
+    score += -1 if latest_rsi > 70 else 0
+    score += 1 if latest_macd > latest_signal else -1
+    bias = "bullish" if score >= 2 else ("bearish" if score <= -2 else "neutral")
+    return {
+        "close": round(latest_close, 8),
+        "sma20": round(sma20, 8),
+        "sma50": round(sma50, 8),
+        "rsi14": round(latest_rsi, 2),
+        "macd": round(latest_macd, 8),
+        "macdSignal": round(latest_signal, 8),
+        "trendBias": bias,
+        "indicatorScore": score,
+        "candleCount": len(candles),
+    }
+
+
+def fetch_recent_market_news(market, max_items=10):
+    base = market.lower().replace("usdt", "").replace("twd", "")
+    tag_map = {"btc": "bitcoin", "eth": "ethereum", "sol": "solana", "doge": "dogecoin"}
+    tag = tag_map.get(base, base)
+    url = f"https://cointelegraph.com/rss/tag/{urllib.parse.quote(tag)}"
+    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "AI-Investment-Committee/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as response:
+            root = ET.fromstring(response.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, socket.timeout, TimeoutError, ET.ParseError, OSError):
+        return []
+
+    articles = []
+    for item in root.findall("./channel/item"):
+        title = item.findtext("title", default="").strip()
+        link = item.findtext("link", default="").strip()
+        published = item.findtext("pubDate", default="").strip()
+        try:
+            published_at = parsedate_to_datetime(published)
+            if published_at.tzinfo is None:
+                published_at = published_at.replace(tzinfo=timezone.utc)
+        except (TypeError, ValueError, IndexError):
+            continue
+        if published_at < cutoff or not title:
+            continue
+        articles.append({"title": title, "link": link, "pubDate": published})
+        if len(articles) >= max_items:
+            break
+    return articles
+
+
+def request_claude_analysis(market, period, indicators, news):
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured on the local server.")
+    model = os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001").strip()
+    symbol = market.upper().replace("USDT", "/USDT").replace("TWD", "/TWD")
+    prompt = {
+        "asset": symbol,
+        "candle_period_minutes": period,
+        "technical_indicators": indicators,
+        "news_last_7_days": news,
+        "output_contract": {
+            "technical_analysis": "Traditional Chinese, 120-180 words",
+            "news_analysis": "Traditional Chinese, 100-150 words; state the limitation if the news list is empty",
+            "overall_summary": "Traditional Chinese, 80-130 words; research only, no buy/sell instruction",
+            "risk_level": "low, medium, or high",
+            "watchpoints": ["Traditional Chinese item", "Traditional Chinese item", "Traditional Chinese item"]
+        },
+    }
+    instruction = (
+        "You are a careful crypto research analyst. Use only the supplied JSON data. "
+        "Return only valid JSON matching output_contract. Do not use Markdown. Do not give trading instructions, "
+        "guarantee outcomes, invent unavailable news, or cite facts outside the provided data."
+    )
+    body = json.dumps({
+        "model": model,
+        "max_tokens": 1100,
+        "temperature": 0.2,
+        "system": instruction,
+        "messages": [{"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}],
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=body,
+        headers={
+            "content-type": "application/json",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=75) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Claude API request failed ({exc.code}): {detail}") from exc
+    except (urllib.error.URLError, socket.timeout, TimeoutError, json.JSONDecodeError, OSError) as exc:
+        raise RuntimeError("Claude API is unavailable.") from exc
+
+    text = "\n".join(
+        block.get("text", "") for block in payload.get("content", [])
+        if block.get("type") == "text"
+    ).strip()
+    try:
+        result = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("Claude returned an invalid analysis format.") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError("Claude returned an invalid analysis format.")
+    return {
+        "technical_analysis": str(result.get("technical_analysis", ""))[:1800],
+        "news_analysis": str(result.get("news_analysis", ""))[:1600],
+        "overall_summary": str(result.get("overall_summary", ""))[:1400],
+        "risk_level": str(result.get("risk_level", "medium"))[:20],
+        "watchpoints": [str(item)[:240] for item in result.get("watchpoints", [])[:5]],
+    }
+
 
 def fetch_max_ticker(market):
     """向 MAX 取得即時報價。
@@ -426,28 +687,34 @@ def start_server():
         print(f"2/3 API Server is running indefinitely on http://localhost:{PORT}")
         httpd.serve_forever()
 
-# 背景啟動 API 伺服器
-server_thread = threading.Thread(target=start_server, daemon=True)
-server_thread.start()
-time.sleep(1)
+def main():
+    # 背景啟動 API 伺服器
+    server_thread = threading.Thread(target=start_server, daemon=True)
+    server_thread.start()
+    time.sleep(1)
 
-# 3. 開啟預設瀏覽器
-print("\n3/3 Opening Web UI in Browser...")
-url = "http://localhost:8080/"
-webbrowser.open(url)
+    # 3. 開啟預設瀏覽器
+    print("\n3/3 Opening Web UI in Browser...")
+    url = "http://localhost:8080/"
+    webbrowser.open(url)
 
-print("\n==================================================================")
-print("SUCCESS: System is UP and RUNNING!")
-print("API Endpoints Ready:")
-print("  - GET  http://localhost:8080/api/report")
-print("  - GET  http://localhost:8080/api/market")
-print("  - POST http://localhost:8080/api/trade")
-print("==================================================================")
-print("Press Ctrl + C in this terminal to shutdown the server.\n")
+    print("\n==================================================================")
+    print("SUCCESS: System is UP and RUNNING!")
+    print("API Endpoints Ready:")
+    print("  - GET  http://localhost:8080/api/report")
+    print("  - GET  http://localhost:8080/api/market")
+    print("  - POST http://localhost:8080/api/trade")
+    print("  - POST http://localhost:8080/api/ai-analysis")
+    print("==================================================================")
+    print("Press Ctrl + C in this terminal to shutdown the server.\n")
 
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    print("\nStopping API Server...")
-    print("System Shutdown Complete.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nStopping API Server...")
+        print("System Shutdown Complete.")
+
+
+if __name__ == "__main__":
+    main()

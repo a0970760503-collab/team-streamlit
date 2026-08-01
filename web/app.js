@@ -1034,6 +1034,79 @@ function toggleChatPanel() {
     }
 }
 
+let claudeAnalysisPending = false;
+
+function escapeClaudeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+}
+
+function closeClaudeAnalysis() {
+    const drawer = document.getElementById('claude-analysis-drawer');
+    if (drawer) drawer.classList.remove('open');
+}
+
+function renderClaudeAnalysis(payload) {
+    const content = document.getElementById('claude-analysis-content');
+    const meta = document.getElementById('claude-analysis-meta');
+    if (!content || !payload.analysis) return;
+
+    const analysis = payload.analysis;
+    const indicators = payload.indicators || {};
+    const riskLabels = { low: '低', medium: '中', high: '高' };
+    const watchpoints = Array.isArray(analysis.watchpoints) ? analysis.watchpoints : [];
+    const formattedTime = payload.generatedAt ? new Date(payload.generatedAt).toLocaleString('zh-TW') : '';
+    if (meta) {
+        meta.textContent = `${payload.market || currentMarket.toUpperCase()} · ${payload.period || currentPeriod} 分 K · 風險：${riskLabels[String(analysis.risk_level).toLowerCase()] || analysis.risk_level || '中'} · ${formattedTime}`;
+    }
+    content.innerHTML = `
+        <div class="claude-analysis-section">
+            <h4>技術面分析</h4>
+            <p>${escapeClaudeHtml(analysis.technical_analysis)}</p>
+            <p style="margin-top:7px; color:var(--text-muted); font-size:10px;">RSI ${escapeClaudeHtml(indicators.rsi14)} · SMA20 ${escapeClaudeHtml(indicators.sma20)} · SMA50 ${escapeClaudeHtml(indicators.sma50)} · MACD ${escapeClaudeHtml(indicators.macd)}</p>
+        </div>
+        <div class="claude-analysis-section">
+            <h4>最近 7 天新聞分析</h4>
+            <p>${escapeClaudeHtml(analysis.news_analysis)}</p>
+        </div>
+        <div class="claude-analysis-section">
+            <h4>整合結論</h4>
+            <p>${escapeClaudeHtml(analysis.overall_summary)}</p>
+            ${watchpoints.length ? `<ul class="claude-watchpoints">${watchpoints.map(item => `<li>${escapeClaudeHtml(item)}</li>`).join('')}</ul>` : ''}
+        </div>
+        <p style="margin:10px 0 0; color:var(--text-muted); font-size:10px;">此為 AI 研究摘要，不構成投資或交易建議。</p>
+    `;
+}
+
+async function openClaudeAnalysis() {
+    const drawer = document.getElementById('claude-analysis-drawer');
+    const content = document.getElementById('claude-analysis-content');
+    const meta = document.getElementById('claude-analysis-meta');
+    if (!drawer || !content || claudeAnalysisPending) return;
+
+    drawer.classList.add('open');
+    claudeAnalysisPending = true;
+    if (meta) meta.textContent = `${currentMarket.toUpperCase()} · 正在讀取 K 線、新聞並請 Claude 分析…`;
+    content.innerHTML = '<div style="color:var(--primary); padding:10px 0;">✨ Claude 正在統整技術指標與最近 7 天新聞，請稍候…</div>';
+
+    try {
+        const response = await fetch('/api/ai-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ market: currentMarket, period: currentPeriod })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Claude 分析請求失敗');
+        renderClaudeAnalysis(payload);
+    } catch (error) {
+        if (meta) meta.textContent = `${currentMarket.toUpperCase()} · 無法完成分析`;
+        content.innerHTML = `<div style="color:var(--danger);">${escapeClaudeHtml(error.message || 'Claude 分析暫時不可用。')}</div><div style="margin-top:8px; color:var(--text-muted); font-size:10px;">請確認伺服器已設定 ANTHROPIC_API_KEY，並稍後重試。</div>`;
+    } finally {
+        claudeAnalysisPending = false;
+    }
+}
+
 // 抓取 MAX 交易所真實 K 線走勢資料 (最近 35 根 15 分鐘線，具備 Mock 容錯機制)
 async function fetchMaxKlineData() {
     try {

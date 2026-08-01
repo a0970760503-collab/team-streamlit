@@ -123,6 +123,38 @@
             box-shadow: 0 0 5px rgba(0, 240, 255, 0.3);
         }
 
+        /* Claude 技術與新聞分析面板 */
+        #claude-analysis-drawer {
+            width: calc(100% - 24px);
+            left: 12px;
+            bottom: 18px;
+            max-height: 78vh;
+            position: absolute;
+            z-index: 1004;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid rgba(0, 240, 255, 0.35);
+            border-radius: 18px;
+            background: linear-gradient(160deg, #0c1323 0%, #08090d 60%);
+            box-shadow: 0 14px 42px rgba(0, 0, 0, 0.65), 0 0 22px rgba(0, 240, 255, 0.16);
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(24px) scale(0.96);
+            transition: opacity .22s ease, transform .22s ease;
+        }
+        #claude-analysis-drawer.open {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateY(0) scale(1);
+        }
+        .claude-analysis-content { overflow-y: auto; padding: 13px 15px 16px; font-size: 12px; line-height: 1.55; }
+        .claude-analysis-section { padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,.08); }
+        .claude-analysis-section:last-child { border-bottom: 0; }
+        .claude-analysis-section h4 { margin: 0 0 5px; color: var(--primary); font-size: 12px; letter-spacing: .3px; }
+        .claude-analysis-section p { margin: 0; color: #d4d9e4; white-space: pre-wrap; }
+        .claude-watchpoints { margin: 7px 0 0; padding-left: 18px; color: #d4d9e4; }
+
         /* 懸浮彈出式 AI 助理控制面板 (定位於手機框內部) */
         .app-container {
             width: calc(100% - 24px);
@@ -422,6 +454,7 @@
                             <span style="font-size:9px; padding:1px 4px; background:rgba(0,240,255,0.08); border:1px solid rgba(0,240,255,0.3); border-radius:3px; cursor:pointer; color:var(--primary); user-select:none;" onclick="changeMarket('btcusdt')">BTC</span>
                             <span style="font-size:9px; padding:1px 4px; background:rgba(112,0,255,0.08); border:1px solid rgba(112,0,255,0.3); border-radius:3px; cursor:pointer; color:#b070ff; user-select:none;" onclick="changeMarket('ethusdt')">ETH</span>
                             <span style="font-size:9px; padding:1px 4px; background:rgba(255,215,0,0.08); border:1px solid rgba(255,215,0,0.3); border-radius:3px; cursor:pointer; color:var(--warning); user-select:none;" onclick="changeMarket('dogeusdt')">DOGE</span>
+                            <button type="button" onclick="openClaudeAnalysis()" style="font-size:9px; padding:2px 5px; background:rgba(0,240,255,0.1); border:1px solid rgba(0,240,255,0.45); border-radius:3px; cursor:pointer; color:var(--primary); font-weight:bold;">✨ Claude</button>
                             <!-- 搜尋框 -->
                             <input type="text" id="market-search" placeholder="搜尋..." style="width:52px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:9px; padding:2px 4px; border-radius:3px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') changeMarket(this.value)">
                         </div>
@@ -481,6 +514,19 @@
         </div>
         
     </div>
+
+    <section id="claude-analysis-drawer" aria-live="polite" aria-label="Claude AI 綜合分析">
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 15px; border-bottom:1px solid rgba(0,240,255,.22); background:rgba(0,0,0,.25);">
+            <div>
+                <div style="color:var(--primary); font-weight:bold; font-size:13px; letter-spacing:.5px;">✨ Claude AI 綜合分析</div>
+                <div id="claude-analysis-meta" style="color:var(--text-muted); font-size:10px; margin-top:2px;">技術面 + 最近 7 天新聞</div>
+            </div>
+            <button type="button" onclick="closeClaudeAnalysis()" aria-label="關閉 Claude 分析" style="border:0; background:transparent; color:var(--text-muted); font-size:20px; cursor:pointer; line-height:1;">×</button>
+        </div>
+        <div id="claude-analysis-content" class="claude-analysis-content">
+            <div style="color:var(--text-muted);">選擇商品後，按下「✨ Claude」即可產生技術面與新聞統整。</div>
+        </div>
+    </section>
     
     <!-- 懸浮彈出式 AI 助理控制面板 (定位於手機框內部) -->
     <div class="app-container">
