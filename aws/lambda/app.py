@@ -280,6 +280,35 @@ def request_debate_reply(market, user_message):
     return {"technical": str(result.get("technical", ""))[:1200], "risk": str(result.get("risk", ""))[:1200], "chair": str(result.get("chair", ""))[:1400]}
 
 
+def demo_debate_reply(market, user_message):
+    """Safe, deterministic fallback for classroom demonstrations without an AI credit balance."""
+    ticker = fetch_ticker(market)
+    if ticker.get("dataSource") == "live" and ticker.get("price") is not None:
+        market_context = f"The public quote is {ticker['price']:,} with a 24-hour change of {ticker.get('change24h', 0):+.2f}%"
+    else:
+        market_context = "A verified live quote is unavailable, so no price conclusion is made"
+    topic = re.sub(r"\s+", " ", user_message).strip()[:160]
+    return {
+        "technical": f"[Demo mode] {market.upper()}: {market_context}. The technical agent treats the user's topic as a research question and would wait for a confirmed trend, volume, and risk limit before drawing conclusions.",
+        "risk": f"[Demo mode] Risk agent response to “{topic}”: market data can move quickly and this simulation does not provide investment instructions. Consider uncertainty, position size, and a predefined stop condition.",
+        "chair": f"[Demo mode] The committee recorded the participant's point: “{topic}”. Based on the available information, the demonstration conclusion is HOLD / continue observing. This is an educational simulation, not a trading recommendation.",
+    }
+
+
+def demo_analysis(market, period, technical, news):
+    """Return a clearly labelled analysis card when the external AI provider is unavailable."""
+    trend = str(technical.get("trendBias", "neutral"))
+    rsi = technical.get("rsi14", "-")
+    headline = news[0].get("title", "No recent verified headline is available") if news else "No recent verified headline is available"
+    return {
+        "technical_analysis": f"[Demo mode] {market.upper()} uses a {period}-minute chart. The calculated trend bias is {trend} and RSI is {rsi}. This card is generated locally for demonstration and is not an AI prediction.",
+        "news_analysis": f"[Demo mode] Latest available headline: {headline}. Headlines can be incomplete or delayed; verify the original source before making any decision.",
+        "overall_summary": "[Demo mode] Continue observing and use predefined risk controls. This educational simulation does not provide buy, sell, or personalised investment advice.",
+        "risk_level": "medium",
+        "watchpoints": ["Confirm market-data source status", "Watch volatility and liquidity", "Do not treat this demo as investment advice"],
+    }
+
+
 def lambda_handler(event, _context):
     method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
     path, params = event.get("rawPath") or event.get("path", ""), event.get("queryStringParameters") or {}
@@ -304,7 +333,11 @@ def lambda_handler(event, _context):
             raw_candles = fetch_proxy({"path": "/api/v2/k", "market": market, "period": period, "limit": 120})
             candles = [[float(item[index]) for index in range(6)] for item in raw_candles if isinstance(item, list) and len(item) >= 6]
             technical, news = calculate_indicators(candles), fetch_news(market)
-            return json_response(200, {"market": market.upper(), "period": period, "indicators": technical, "news": news, "analysis": request_analysis(market, period, technical, news), "generatedAt": datetime.now(timezone.utc).isoformat()})
+            try:
+                analysis, mode = request_analysis(market, period, technical, news), "ai"
+            except RuntimeError:
+                analysis, mode = demo_analysis(market, period, technical, news), "demo"
+            return json_response(200, {"market": market.upper(), "period": period, "indicators": technical, "news": news, "analysis": analysis, "mode": mode, "generatedAt": datetime.now(timezone.utc).isoformat()})
         if method == "POST" and path == "/api/debate-message":
             raw_body = event.get("body") or "{}"
             if event.get("isBase64Encoded"): raw_body = base64.b64decode(raw_body).decode("utf-8")
@@ -313,7 +346,10 @@ def lambda_handler(event, _context):
             market = validate_market(payload.get("market", "btcusdt"))
             message = str(payload.get("message", "")).strip()
             if not (1 <= len(message) <= 700): raise ValueError("Discussion message must be 1 to 700 characters.")
-            replies = request_debate_reply(market, message)
+            try:
+                replies, mode = request_debate_reply(market, message), "ai"
+            except RuntimeError:
+                replies, mode = demo_debate_reply(market, message), "demo"
             # Keep the concise API used by the serverless UI and also provide the
             # debate schema expected by the latest repository interface.
             debates = [
@@ -323,7 +359,7 @@ def lambda_handler(event, _context):
             ]
             return json_response(200, {
                 "replies": replies, "debates": debates,
-                "summary": replies.get("chair", ""), "final_action": "HOLD",
+                "summary": replies.get("chair", ""), "final_action": "HOLD", "mode": mode,
                 "generatedAt": datetime.now(timezone.utc).isoformat(),
             })
         return json_response(404, {"error": "Endpoint not found."})
