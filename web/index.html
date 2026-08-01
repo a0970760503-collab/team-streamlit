@@ -61,6 +61,9 @@
             overflow: hidden;
             background-color: #000;
         }
+        /* Keep the post-merge duplicate header out of the layout. */
+        #dashboard-home-view > div:first-child { display: none !important; }
+        #dashboard-home-view > div:nth-child(2) { flex-shrink: 0; }
 
         /* 看盤首頁行情列表項樣式 */
         .market-row {
@@ -445,6 +448,7 @@
                     <!-- 綜合搜尋框 -->
                     <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:100px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
                 </div>
+            </div>
             <div style="padding: 16px; border-bottom: 1px solid rgba(0,240,255,0.15); display:flex; justify-content:space-between; align-items:center; gap:8px; background:#000;">
                 <span style="color:var(--primary); font-weight:bold; font-size:16px; letter-spacing:1px; text-shadow:0 0 5px var(--primary); white-space:nowrap;">📊 市場行情</span>
                 <button class="learn-nav-btn" type="button" onclick="showLearningView()">🎯 闖關</button>
