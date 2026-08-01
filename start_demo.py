@@ -129,7 +129,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             elif path == "/test":
                 self.respond_json({"status": "ok", "message": "API Server Running"})
             else:
-                self.send_error(404, "Endpoint Not Found")
+                self.respond_json({"error": "Endpoint Not Found"}, status=404)
         else:
             super().do_GET()
 
@@ -176,7 +176,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 payload = {}
             self.handle_extract_topic(payload)
         else:
-            self.send_error(404, "Endpoint Not Found")
+            self.respond_json({"error": "Endpoint Not Found"}, status=404)
 
     def handle_report(self):
         ticker = fetch_max_ticker("soltwd")
@@ -234,7 +234,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             
             def _do_invoke():
                 response = bedrock_client.invoke_model(
-                    modelId='us.anthropic.claude-sonnet-4-6',
+                    modelId='anthropic.claude-haiku-4-5-20251001-v1:0',
                     body=body
                 )
                 response_body = json.loads(response.get('body').read())
@@ -334,7 +334,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         params = urllib.parse.parse_qs(query_str)
         target_path = params.get("path", [""])[0]
         if not target_path:
-            self.send_error(400, "Missing path parameter")
+            self.respond_json({"error": "Missing path parameter"}, status=400)
             return
         parsed_self = urllib.parse.urlparse(self.path)
         qs = urllib.parse.parse_qsl(parsed_self.query)
@@ -351,7 +351,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(res_req.read().decode('utf-8'))
             self.respond_json(data)
         except Exception as e:
-            self.send_error(500, f"Proxy Error: {str(e)}")
+            self.respond_json({"error": f"Proxy Error: {str(e)}"}, status=500)
 
     def handle_trade(self, payload):
         market = payload.get("market", "soltwd").upper()
@@ -485,8 +485,8 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             # RSS fetch fails
             self.respond_json({"status": "error", "news": [], "error": str(e)})
 
-    def respond_json(self, data):
-        self.send_response(200)
+    def respond_json(self, data, status=200):
+        self.send_response(status)
         self.send_header('Content-Type', 'application/json; charset=utf-8')
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
@@ -551,7 +551,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             })
             def _do_invoke():
                 response = bedrock_client.invoke_model(
-                    modelId='us.anthropic.claude-sonnet-4-6',
+                    modelId='anthropic.claude-haiku-4-5-20251001-v1:0',
                     body=body
                 )
                 return json.loads(response.get('body').read()).get('content')[0]['text']
@@ -605,7 +605,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
             })
             response = bedrock_client.invoke_model(
-                modelId='us.anthropic.claude-sonnet-4-6',
+                modelId='anthropic.claude-haiku-4-5-20251001-v1:0',
                 body=body
             )
             return json.loads(response.get('body').read()).get('content')[0]['text']
@@ -638,7 +638,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         def _invoke():
             if getattr(sys.modules[__name__], 'bedrock_client', None):
                 res = bedrock_client.invoke_model(
-                    modelId='us.anthropic.claude-sonnet-4-6',
+                    modelId='anthropic.claude-haiku-4-5-20251001-v1:0',
                     body=body
                 )
                 return json.loads(res.get('body').read()).get('content')[0]['text'].strip().lower()
