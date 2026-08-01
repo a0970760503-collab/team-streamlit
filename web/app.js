@@ -1883,6 +1883,17 @@ function startLiveChatSimulation() {
         // 偶爾讓 AI 對模擬用戶的危險發言主動回覆
         if (Math.random() > 0.8) {
             triggerAIResponseIfKeyword(randomRes);
+        } else if (Math.random() > 0.85) {
+            // 陣營 AI 總司令喊話
+            if (currentBullPct > 60) {
+                appendLiveMessage('兄弟們！空軍快不行了，繼續加倉把他們爆掉！🚀', 'ai', '🐂 多軍總司令');
+            } else if (currentBullPct < 40) {
+                appendLiveMessage('市場情緒太脆弱了，跟我一起做空，讓多軍見血！🩸', 'ai', '🐻 空軍總司令');
+            } else if (Math.random() > 0.5) {
+                appendLiveMessage('目前勢均力敵，多軍弟兄們別放棄，守住支撐！🛡️', 'ai', '🐂 多軍總司令');
+            } else {
+                appendLiveMessage('多軍還在死撐，空軍集合，準備倒貨！📉', 'ai', '🐻 空軍總司令');
+            }
         }
     }, Math.floor(Math.random() * 5000) + 3000); // 3 ~ 8 秒隨機發一句
 }
@@ -1935,3 +1946,73 @@ function simulateLiveChatResponse(userText) {
     // 檢查使用者的輸入是否觸發 AI 關鍵字
     triggerAIResponseIfKeyword(userText);
 }
+
+// --- AI 多空陣營戰 (Faction War) 邏輯 ---
+
+let currentBullPct = 50;
+let userFaction = null;
+let factionWarInterval = null;
+
+function initFactionWar() {
+    if (factionWarInterval) clearInterval(factionWarInterval);
+    updateFactionUI();
+    factionWarInterval = setInterval(() => {
+        // 隨機變動 1~3%
+        const change = (Math.random() * 6 - 3);
+        currentBullPct = Math.max(10, Math.min(90, currentBullPct + change));
+        updateFactionUI();
+    }, 2000);
+}
+
+function updateFactionUI() {
+    const bullBar = document.getElementById('faction-bull-bar');
+    const bearBar = document.getElementById('faction-bear-bar');
+    const centerLine = document.getElementById('faction-center-line');
+    const bullPctText = document.getElementById('faction-bull-pct');
+    const bearPctText = document.getElementById('faction-bear-pct');
+    
+    if (bullBar && bearBar && centerLine) {
+        bullBar.style.width = `${currentBullPct}%`;
+        bearBar.style.width = `${100 - currentBullPct}%`;
+        centerLine.style.left = `${currentBullPct}%`;
+        
+        bullPctText.innerText = `${currentBullPct.toFixed(1)}%`;
+        bearPctText.innerText = `${(100 - currentBullPct).toFixed(1)}%`;
+    }
+}
+
+function joinFaction(faction) {
+    if (userFaction) return; // 已經加入過
+    userFaction = faction;
+    
+    const btnBull = document.getElementById('btn-join-bull');
+    const btnBear = document.getElementById('btn-join-bear');
+    
+    btnBull.disabled = true;
+    btnBear.disabled = true;
+    
+    if (faction === 'bull') {
+        btnBull.innerHTML = '🐂 已加入多軍';
+        btnBull.style.background = 'rgba(57,255,20,0.3)';
+        btnBull.style.boxShadow = '0 0 15px var(--success)';
+        btnBear.style.opacity = '0.3';
+        currentBullPct += 15; // 給予多軍 15% 激勵，視覺效果明顯
+    } else {
+        btnBear.innerHTML = '🐻 已加入空軍';
+        btnBear.style.background = 'rgba(255,0,85,0.3)';
+        btnBear.style.boxShadow = '0 0 15px var(--danger)';
+        btnBull.style.opacity = '0.3';
+        currentBullPct -= 15; // 給予空軍 15% 激勵
+    }
+    
+    updateFactionUI();
+    
+    // 陣營加入動畫回饋 (聊天室推播)
+    setTimeout(() => {
+        const factionName = faction === 'bull' ? '多軍' : '空軍';
+        appendLiveMessage(`系統廣播：一位勇敢的交易者加入了 ${factionName}！為信仰充值！`, 'ai', '⚔️ 系統');
+    }, 500);
+}
+
+// 啟動陣營戰隨機波動
+initFactionWar();

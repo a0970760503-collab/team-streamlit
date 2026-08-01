@@ -491,6 +491,24 @@
                             <span>低:<span id="kline-low" style="color:#fff">--</span></span>
                         </div>
                     </div>
+                    
+                    <!-- 第四列：AI 多空陣營戰 (Faction War UI) -->
+                    <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; margin-bottom:4px; padding:4px 6px; background:rgba(255,255,255,0.02); border-radius:6px; border:1px solid rgba(255,255,255,0.05);" id="faction-war-container">
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:bold;">
+                            <span style="color:var(--success); text-shadow:0 0 5px rgba(57,255,20,0.5);">🐂 多軍 <span id="faction-bull-pct">50%</span></span>
+                            <span style="color:var(--text-muted); font-size:9px; letter-spacing:1px;">⚔️ 陣營勢力戰</span>
+                            <span style="color:var(--danger); text-shadow:0 0 5px rgba(255,0,85,0.5);">🐻 空軍 <span id="faction-bear-pct">50%</span></span>
+                        </div>
+                        <div style="width:100%; height:6px; background:#222; border-radius:3px; display:flex; overflow:hidden; position:relative; box-shadow:inset 0 0 5px #000;">
+                            <div id="faction-bull-bar" style="height:100%; width:50%; background:linear-gradient(90deg, rgba(57,255,20,0.2), var(--success)); box-shadow:0 0 10px var(--success); transition:width 0.5s ease-out;"></div>
+                            <div id="faction-bear-bar" style="height:100%; width:50%; background:linear-gradient(270deg, rgba(255,0,85,0.2), var(--danger)); box-shadow:0 0 10px var(--danger); transition:width 0.5s ease-out;"></div>
+                            <div style="position:absolute; left:50%; top:0; bottom:0; width:2px; background:#fff; transform:translateX(-50%); box-shadow:0 0 5px #fff; z-index:2; transition:left 0.5s ease-out;" id="faction-center-line"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; gap:10px; margin-top:2px;">
+                            <button id="btn-join-bull" onclick="joinFaction('bull')" style="flex:1; background:rgba(57,255,20,0.1); border:1px solid rgba(57,255,20,0.3); color:var(--success); border-radius:4px; padding:4px 0; font-size:10px; font-weight:bold; cursor:pointer; transition:0.3s;" onmouseover="if(!this.disabled) { this.style.background='rgba(57,255,20,0.3)'; this.style.boxShadow='0 0 8px var(--success)'; }" onmouseout="if(!this.disabled) { this.style.background='rgba(57,255,20,0.1)'; this.style.boxShadow='none'; }">站隊多軍</button>
+                            <button id="btn-join-bear" onclick="joinFaction('bear')" style="flex:1; background:rgba(255,0,85,0.1); border:1px solid rgba(255,0,85,0.3); color:var(--danger); border-radius:4px; padding:4px 0; font-size:10px; font-weight:bold; cursor:pointer; transition:0.3s;" onmouseover="if(!this.disabled) { this.style.background='rgba(255,0,85,0.3)'; this.style.boxShadow='0 0 8px var(--danger)'; }" onmouseout="if(!this.disabled) { this.style.background='rgba(255,0,85,0.1)'; this.style.boxShadow='none'; }">站隊空軍</button>
+                        </div>
+                    </div>
                 </div>
                 <!-- SVG K 線圖畫布區 (綁定 Touch & Mouse 事件) -->
                 <div style="flex: 1; position: relative; touch-action: none;" id="kline-canvas-container">
