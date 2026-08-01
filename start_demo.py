@@ -427,9 +427,17 @@ def start_server():
         httpd.serve_forever()
 
 # 背景啟動 API 伺服器
-server_thread = threading.Thread(target=start_server, daemon=True)
-server_thread.start()
-time.sleep(1)
+@st.cache_resource
+def launch_server_once():
+    server_thread = threading.Thread(
+        target=start_server,
+        daemon=True
+    )
+    server_thread.start()
+    time.sleep(1)
+    return server_thread
+
+launch_server_once()
 
 # 3. 開啟預設瀏覽器
 print("\n3/3 Opening Web UI in Browser...")
