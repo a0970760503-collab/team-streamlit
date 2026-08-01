@@ -55,10 +55,8 @@ function updateDataSourceBanner() {
         banner = document.createElement('div');
         banner.id = 'data-source-banner';
         banner.setAttribute('role', 'alert');
-        banner.style.position = 'absolute';
-        banner.style.top = '0';
-        banner.style.left = '0';
-        banner.style.right = '0';
+        banner.style.position = 'relative'; // 改為 relative 以推開下方內容
+        banner.style.flexShrink = '0';
         banner.style.zIndex = '2000';
         banner.style.padding = '8px 12px';
         banner.style.background = 'rgba(255, 0, 60, 0.92)';
@@ -69,7 +67,13 @@ function updateDataSourceBanner() {
         banner.style.textAlign = 'center';
         banner.style.letterSpacing = '0.3px';
         banner.style.boxShadow = '0 2px 12px rgba(255, 0, 60, 0.5)';
-        host.appendChild(banner);
+        
+        const dashboard = document.querySelector('.phone-dashboard');
+        if (dashboard) {
+            dashboard.insertBefore(banner, dashboard.firstChild);
+        } else {
+            host.appendChild(banner);
+        }
     }
 
     const reasons = Array.from(degradedChannels.entries())
