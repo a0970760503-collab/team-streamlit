@@ -9,6 +9,9 @@ Parameters:
   AllowedOrigin:
     Type: String
     Default: '*'
+  DemoMode:
+    Type: String
+    Default: 'true'
 
 Globals:
   Function:
@@ -20,8 +23,8 @@ Globals:
       Variables:
         ANTHROPIC_SECRET_ARN: !Ref AnthropicSecretArn
         ALLOWED_ORIGIN: !Ref AllowedOrigin
-        CLAUDE_MODEL: claude-haiku-4-5-20251001
-        DEMO_MODE: 'true'
+        BEDROCK_MODEL: amazon.nova-lite-v1:0
+        DEMO_MODE: !Ref DemoMode
         COMMUNITY_TABLE: !Ref CommunityMessages
 
 Resources:
@@ -40,6 +43,10 @@ Resources:
       Handler: app.lambda_handler
       ReservedConcurrentExecutions: 3
       Policies:
+        - Statement:
+            Effect: Allow
+            Action: [bedrock:Converse, bedrock:InvokeModel]
+            Resource: '*'
         - AWSSecretsManagerGetSecretValuePolicy:
             SecretArn: !Ref AnthropicSecretArn
         - DynamoDBCrudPolicy:

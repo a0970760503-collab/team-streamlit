@@ -19,6 +19,7 @@ from email.utils import parsedate_to_datetime
 
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.exceptions import BotoCoreError, ClientError
 
 MAX_API_URL = "https://max-api.maicoin.com"
 RSS_URL = "https://cointelegraph.com/rss"
@@ -260,23 +261,26 @@ def demo_mode_enabled():
     return os.environ.get("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def request_bedrock_json(system, prompt, max_tokens, temperature):
+    try:
+        response = boto3.client("bedrock-runtime").converse(
+            modelId=os.environ.get("BEDROCK_MODEL", "amazon.nova-lite-v1:0"),
+            system=[{"text": system}], messages=[{"role": "user", "content": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
+            inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
+        )
+        text = "".join(item.get("text", "") for item in response["output"]["message"]["content"])
+        value = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
+    except (BotoCoreError, ClientError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Amazon Bedrock AI 暫時無法使用；請確認模型存取權與 Lambda IAM 權限。") from exc
+    if not isinstance(value, dict):
+        raise RuntimeError("Amazon Bedrock returned an invalid format.")
+    return value
+
+
 def request_analysis(market, period, technical, news):
     prompt = {"asset": market.upper(), "candle_period_minutes": period, "technical_indicators": technical, "news_last_7_days": news,
               "output_contract": {"technical_analysis": "Traditional Chinese, 120-180 words", "news_analysis": "Traditional Chinese, 100-150 words", "overall_summary": "Traditional Chinese, research only; no buy/sell instruction", "risk_level": "low, medium, or high", "watchpoints": ["Traditional Chinese item", "Traditional Chinese item", "Traditional Chinese item"]}}
-    body = json.dumps({"model": os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001"), "max_tokens": 1100, "temperature": 0.2,
-                       "system": "Use only supplied JSON. Return valid JSON only. Do not give trading instructions or guarantee outcomes.", "messages": [{"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}]}).encode("utf-8")
-    request = urllib.request.Request(ANTHROPIC_URL, data=body, method="POST", headers={"content-type": "application/json", "x-api-key": anthropic_key(), "anthropic-version": "2023-06-01"})
-    try:
-        with urllib.request.urlopen(request, timeout=25) as remote_response:
-            payload = json.loads(remote_response.read().decode("utf-8"))
-        text = "\n".join(block.get("text", "") for block in payload.get("content", []) if block.get("type") == "text")
-        result = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"AI analysis provider failed ({exc.code}).") from exc
-    except (urllib.error.URLError, socket.timeout, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError("AI analysis is temporarily unavailable.") from exc
-    if not isinstance(result, dict):
-        raise RuntimeError("AI analysis returned an invalid format.")
+    result = request_bedrock_json("Use only supplied JSON. Return valid JSON only. Do not give trading instructions or guarantee outcomes.", prompt, 1100, 0.2)
     return {"technical_analysis": str(result.get("technical_analysis", ""))[:1800], "news_analysis": str(result.get("news_analysis", ""))[:1600], "overall_summary": str(result.get("overall_summary", ""))[:1400], "risk_level": str(result.get("risk_level", "medium"))[:20], "watchpoints": [str(item)[:240] for item in result.get("watchpoints", [])[:5]]}
 
 
@@ -290,23 +294,7 @@ def request_debate_reply(market, user_message):
             "chair": "Traditional Chinese, 60-110 words; fairly synthesise the user and agents, research only, no buy/sell instruction."
         }
     }
-    body = json.dumps({
-        "model": os.environ.get("CLAUDE_MODEL", "claude-haiku-4-5-20251001"), "max_tokens": 700, "temperature": 0.3,
-        "system": "You are a careful investment research committee. Treat the user as a participant. Use only supplied JSON, return valid JSON only, and do not give personalized financial advice, trading instructions, or guarantees.",
-        "messages": [{"role": "user", "content": json.dumps(prompt, ensure_ascii=False)}]
-    }).encode("utf-8")
-    request = urllib.request.Request(ANTHROPIC_URL, data=body, method="POST", headers={"content-type": "application/json", "x-api-key": anthropic_key(), "anthropic-version": "2023-06-01"})
-    try:
-        with urllib.request.urlopen(request, timeout=25) as remote_response:
-            payload = json.loads(remote_response.read().decode("utf-8"))
-        text = "\n".join(block.get("text", "") for block in payload.get("content", []) if block.get("type") == "text")
-        result = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
-    except urllib.error.HTTPError as exc:
-        raise RuntimeError(f"AI debate provider failed ({exc.code}).") from exc
-    except (urllib.error.URLError, socket.timeout, TimeoutError, json.JSONDecodeError, OSError) as exc:
-        raise RuntimeError("AI debate is temporarily unavailable.") from exc
-    if not isinstance(result, dict):
-        raise RuntimeError("AI debate returned an invalid format.")
+    result = request_bedrock_json("You are a careful investment research committee. Treat the user as a participant. Use only supplied JSON, return valid JSON only, and do not give personalized financial advice, trading instructions, or guarantees.", prompt, 700, 0.3)
     return {"technical": str(result.get("technical", ""))[:1200], "risk": str(result.get("risk", ""))[:1200], "chair": str(result.get("chair", ""))[:1400]}
 
 
