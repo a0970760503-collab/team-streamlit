@@ -176,6 +176,24 @@
             transform: scale(1.1) rotate(10deg);
             box-shadow: 0 6px 24px rgba(112, 0, 255, 0.5), 0 0 15px rgba(0, 240, 255, 0.6);
         }
+        #community-launch-btn { position:absolute; right:18px; bottom:88px; z-index:1001; border:1px solid rgba(0,240,255,.65); border-radius:18px; padding:8px 11px; color:var(--primary); background:rgba(9,9,11,.92); font:700 12px inherit; cursor:pointer; box-shadow:0 0 12px rgba(0,240,255,.2); }
+        .community-panel { position:absolute; right:16px; bottom:88px; z-index:1003; width:min(350px, calc(100% - 32px)); height:58%; display:none; flex-direction:column; overflow:hidden; border:1px solid rgba(0,240,255,.38); border-radius:16px; background:linear-gradient(180deg,#11131c,#08090d); box-shadow:0 14px 42px rgba(0,0,0,.65), 0 0 22px rgba(0,240,255,.16); }
+        .community-panel.open { display:flex; }
+        .community-header { display:flex; align-items:center; gap:8px; padding:11px 12px; border-bottom:1px solid rgba(255,255,255,.1); color:#fff; font-size:13px; font-weight:700; }
+        .community-header small { color:var(--text-muted); font-size:10px; font-weight:400; margin-right:auto; }
+        .community-close { border:0; background:transparent; color:var(--text-muted); font-size:20px; cursor:pointer; }
+        #live-chat-messages { flex:1; overflow-y:auto; padding:10px 12px; display:flex; flex-direction:column; gap:9px; }
+        .live-msg { display:flex; flex-direction:column; gap:2px; max-width:88%; font-size:12px; line-height:1.45; }
+        .live-msg .name { color:var(--primary); font-weight:700; font-size:10px; }
+        .live-msg .text { padding:8px 10px; border-radius:4px 10px 10px; background:#1b1d26; color:#e7edf3; white-space:pre-wrap; overflow-wrap:anywhere; }
+        .live-msg.user { align-self:flex-end; }
+        .live-msg.user .name { color:#c7a7ff; text-align:right; }
+        .live-msg.user .text { border-radius:10px 4px 10px 10px; background:rgba(112,0,255,.3); }
+        .live-msg.ai .name { color:#ffd700; }
+        .live-msg.ai .text { border:1px solid rgba(255,215,0,.25); }
+        .community-compose { display:grid; grid-template-columns:90px 1fr auto; gap:6px; padding:9px; border-top:1px solid rgba(255,255,255,.1); }
+        .community-compose input { min-width:0; border:1px solid rgba(0,240,255,.25); border-radius:7px; background:#0b0c12; color:#fff; padding:8px; font:inherit; font-size:11px; outline:none; }
+        .community-compose button { border:0; border-radius:7px; background:linear-gradient(90deg,var(--secondary),var(--primary)); color:#fff; font:700 11px inherit; padding:0 10px; cursor:pointer; }
 
         .navbar { padding: 16px 20px; background: rgba(24, 24, 27, 0.9); border-bottom: 1px solid rgba(0, 240, 255, 0.2); display: flex; justify-content: space-between; align-items: center; z-index: 10; flex-shrink: 0; }
         .navbar h1 { margin: 0; font-size: 16px; color: #fff; text-shadow: 0 0 5px var(--primary); font-family: 'Segoe UI', sans-serif;}
@@ -185,6 +203,39 @@
         .page { display: none; height: 100%; flex-direction: column; overflow-y: auto; padding: 20px; }
         .page.active { display: flex; animation: slideIn 0.3s ease forwards; }
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 學習闖關頁 */
+        .learning-view { display: none; flex-direction: column; width: 100%; height: 100%; background: radial-gradient(circle at 85% 0%, rgba(112,0,255,.28), transparent 34%), #07070b; }
+        .learning-view.open { display: flex; }
+        .learning-header { display:flex; align-items:center; justify-content:space-between; padding:15px 16px; border-bottom:1px solid rgba(0,240,255,.2); background:rgba(0,0,0,.62); }
+        .learning-back, .learn-nav-btn { border:1px solid rgba(0,240,255,.35); border-radius:8px; color:var(--primary); background:rgba(0,240,255,.08); font:inherit; font-size:11px; font-weight:700; cursor:pointer; padding:6px 9px; }
+        .learning-content { overflow-y:auto; padding:18px 16px 32px; }
+        .learning-hero { padding:16px; border:1px solid rgba(112,0,255,.5); border-radius:16px; background:linear-gradient(135deg,rgba(112,0,255,.22),rgba(0,240,255,.07)); box-shadow:0 0 22px rgba(112,0,255,.13); }
+        .learning-hero h2 { margin:0 0 5px; font-size:21px; color:#fff; }
+        .learning-hero p { margin:0; font-size:12px; line-height:1.6; color:var(--text-muted); }
+        .learn-progress { height:7px; margin:14px 0 5px; border-radius:99px; background:rgba(255,255,255,.1); overflow:hidden; }
+        .learn-progress > span { display:block; width:0; height:100%; border-radius:inherit; background:linear-gradient(90deg,var(--secondary),var(--primary)); box-shadow:0 0 10px var(--primary); transition:width .35s ease; }
+        .learn-progress-text { color:var(--primary); font-size:11px; font-weight:700; }
+        .stage-card { margin-top:14px; padding:15px; border:1px solid rgba(255,255,255,.1); border-radius:15px; background:rgba(24,24,27,.76); }
+        .stage-card.locked { opacity:.46; filter:saturate(.45); }
+        .stage-card.done { border-color:rgba(57,255,20,.55); box-shadow:inset 3px 0 0 var(--success); }
+        .stage-top { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+        .stage-number { color:var(--primary); font-family:monospace; font-size:11px; font-weight:800; letter-spacing:.7px; }
+        .stage-status { color:var(--warning); font-size:11px; white-space:nowrap; }
+        .stage-card.done .stage-status { color:var(--success); }
+        .stage-card h3 { margin:3px 0 7px; color:#fff; font-size:16px; }
+        .stage-card p { margin:0; color:var(--text-muted); font-size:12px; line-height:1.6; }
+        .learn-task { margin:12px 0; padding:10px; border-left:3px solid var(--primary); border-radius:0 8px 8px 0; background:rgba(0,240,255,.07); color:#dce8ec; font-size:12px; line-height:1.55; }
+        .learn-task b { color:var(--primary); }
+        .knowledge-tip { padding:10px; border-radius:8px; background:rgba(255,215,0,.07); color:#f2d977; font-size:11px; line-height:1.55; }
+        .quiz-title { margin:14px 0 8px; color:#fff; font-size:12px; font-weight:700; }
+        .quiz-options { display:grid; gap:7px; }
+        .quiz-option { width:100%; padding:9px 10px; border:1px solid rgba(255,255,255,.15); border-radius:8px; background:#101015; color:#dfe7ec; text-align:left; font:inherit; font-size:12px; cursor:pointer; }
+        .quiz-option:hover:not(:disabled) { border-color:var(--primary); color:#fff; }
+        .quiz-option.correct { border-color:var(--success); background:rgba(57,255,20,.1); color:var(--success); }
+        .quiz-option.wrong { border-color:var(--danger); background:rgba(255,0,60,.1); color:#ff9aad; }
+        .quiz-feedback { min-height:17px; margin-top:8px; color:var(--text-muted); font-size:11px; }
+        .quiz-feedback.success { color:var(--success); }
 
         .glow-btn { background: linear-gradient(90deg, var(--secondary), var(--primary)); color: #fff; border: none; padding: 16px; border-radius: 12px; font-size: 16px; font-weight: bold; cursor: pointer; width: 100%; margin-top: auto; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0, 240, 255, 0.3); transition: 0.3s; flex-shrink: 0; letter-spacing: 1px;}
         .glow-btn:hover { filter: brightness(1.2); }
@@ -309,6 +360,12 @@
         .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
         .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
         .decision-btn-container { position: absolute; bottom: 0; left: 0; right: 0; padding: 20px; background: linear-gradient(0deg, #09090b 70%, transparent); display: none; z-index: 5;}
+        .debate-input-area { position: absolute; left: 16px; right: 16px; bottom: 12px; display: flex; gap: 8px; z-index: 6; }
+        .debate-input-area input { min-width: 0; flex: 1; background: #18181b; color: var(--text-main); border: 1px solid rgba(0,240,255,.4); border-radius: 10px; padding: 11px 12px; font: inherit; outline: none; }
+        .debate-input-area input:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(0,240,255,.2); }
+        .debate-input-area button { border: 0; border-radius: 10px; padding: 0 13px; color: #fff; background: linear-gradient(90deg, var(--secondary), var(--primary)); font-weight: 700; cursor: pointer; }
+        #page3 .chat-container { padding-bottom: 150px; }
+        #page3 .decision-btn-container { bottom: 58px; padding: 12px 20px; }
 
         /* Page 4: Voting Results Styles */
         .vote-circle { width: 160px; height: 160px; border-radius: 50%; border: 4px solid var(--warning); margin: 0 auto 24px; display: flex; flex-direction: column; align-items: center; justify-content: center; box-shadow: 0 0 30px rgba(255,215,0,0.2); }
@@ -388,6 +445,11 @@
                     <!-- 綜合搜尋框 -->
                     <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:100px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
                 </div>
+            <div style="padding: 16px; border-bottom: 1px solid rgba(0,240,255,0.15); display:flex; justify-content:space-between; align-items:center; gap:8px; background:#000;">
+                <span style="color:var(--primary); font-weight:bold; font-size:16px; letter-spacing:1px; text-shadow:0 0 5px var(--primary); white-space:nowrap;">📊 市場行情</span>
+                <button class="learn-nav-btn" type="button" onclick="showLearningView()">🎯 闖關</button>
+                <!-- 綜合搜尋框 -->
+                <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:120px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
             </div>
             
             <!-- 行情自選列表區 -->
@@ -506,6 +568,54 @@
                 </div>
             </div>
         </div>
+
+        <!-- 3. 程式操作與知識學習闖關 -->
+        <section id="learning-view" class="learning-view" aria-label="交易學習闖關">
+            <header class="learning-header">
+                <button class="learning-back" type="button" onclick="showDashboardHomeView()">← 返回行情</button>
+                <span style="color:var(--primary); font-size:13px; font-weight:800; letter-spacing:.6px;">🎯 LEARN QUEST</span>
+                <button class="learning-back" type="button" onclick="resetLearningProgress()">重置</button>
+            </header>
+            <div class="learning-content">
+                <div class="learning-hero">
+                    <h2>交易介面新手訓練</h2>
+                    <p>一關一關完成操作練習，搭配必要觀念。這是模擬教學，不會送出任何真實交易。</p>
+                    <div class="learn-progress"><span id="learn-progress-bar"></span></div>
+                    <div class="learn-progress-text" id="learn-progress-text">已完成 0 / 3 關</div>
+                </div>
+
+                <article class="stage-card" data-stage="1">
+                    <div class="stage-top"><div><div class="stage-number">STAGE 01 · 看懂市場</div><h3>選擇交易商品</h3></div><span class="stage-status">進行中</span></div>
+                    <p>市場首頁列出不同幣種的即時報價；點選任一商品即可開啟它的 K 線與盤口。</p>
+                    <div class="learn-task"><b>操作任務：</b>前往 BTC/USDT 的 K 線圖，看看不同時間週期。</div>
+                    <button class="learn-nav-btn" type="button" onclick="startMarketPractice()">前往 K 線練習 →</button>
+                    <div class="knowledge-tip">💡 <b>知識點：</b>交易對 BTC/USDT 表示用 USDT 為 BTC 定價；報價的漲跌幅通常是相對 24 小時前的變動。</div>
+                    <div class="quiz-title">小測驗：BTC/USDT 的價格是以哪種資產計價？</div>
+                    <div class="quiz-options"><button class="quiz-option" data-stage="1" data-answer="BTC" onclick="answerLearningQuiz(1, 'BTC')">BTC</button><button class="quiz-option" data-stage="1" data-answer="USDT" onclick="answerLearningQuiz(1, 'USDT')">USDT</button><button class="quiz-option" data-stage="1" data-answer="美元現鈔" onclick="answerLearningQuiz(1, '美元現鈔')">美元現鈔</button></div>
+                    <div class="quiz-feedback" id="quiz-feedback-1"></div>
+                </article>
+
+                <article class="stage-card locked" data-stage="2">
+                    <div class="stage-top"><div><div class="stage-number">STAGE 02 · 閱讀 K 線</div><h3>辨識一根 K 線</h3></div><span class="stage-status">尚未解鎖</span></div>
+                    <p>K 線把特定時間區間內的開盤、收盤、最高與最低價濃縮在一起；切換 5 分、1 小時、日線，看到的是不同尺度的市場行為。</p>
+                    <div class="learn-task"><b>操作任務：</b>在 K 線頁切換「5分」與「日線」，比較每根 K 棒代表的時間長度。</div>
+                    <div class="knowledge-tip">💡 <b>知識點：</b>綠 K 表示收盤價不低於開盤價，紅 K 則表示收盤價低於開盤價；顏色不是買賣建議。</div>
+                    <div class="quiz-title">小測驗：日線的一根 K 棒通常代表多久？</div>
+                    <div class="quiz-options"><button class="quiz-option" data-stage="2" data-answer="5 分鐘" onclick="answerLearningQuiz(2, '5 分鐘')">5 分鐘</button><button class="quiz-option" data-stage="2" data-answer="1 小時" onclick="answerLearningQuiz(2, '1 小時')">1 小時</button><button class="quiz-option" data-stage="2" data-answer="1 天" onclick="answerLearningQuiz(2, '1 天')">1 天</button></div>
+                    <div class="quiz-feedback" id="quiz-feedback-2"></div>
+                </article>
+
+                <article class="stage-card locked" data-stage="3">
+                    <div class="stage-top"><div><div class="stage-number">STAGE 03 · 風險決策</div><h3>先訂規則，再看訊號</h3></div><span class="stage-status">尚未解鎖</span></div>
+                    <p>AI 分析、新聞與技術指標都只是研究材料。交易前仍要先決定可承受的損失、部位大小與退出條件。</p>
+                    <div class="learn-task"><b>操作任務：</b>開啟右下角 AI 助理，輸入你想研究的幣種與風險條件，再閱讀委員會的不同觀點。</div>
+                    <div class="knowledge-tip">💡 <b>知識點：</b>分散、部位控管與停損規則有助於限制單一判斷失誤的影響，但不保證獲利。</div>
+                    <div class="quiz-title">小測驗：最適合放在交易前完成的是哪一項？</div>
+                    <div class="quiz-options"><button class="quiz-option" data-stage="3" data-answer="先定風險上限" onclick="answerLearningQuiz(3, '先定風險上限')">先定風險上限</button><button class="quiz-option" data-stage="3" data-answer="看到上漲就全押" onclick="answerLearningQuiz(3, '看到上漲就全押')">看到上漲就全押</button><button class="quiz-option" data-stage="3" data-answer="只聽單一消息" onclick="answerLearningQuiz(3, '只聽單一消息')">只聽單一消息</button></div>
+                    <div class="quiz-feedback" id="quiz-feedback-3"></div>
+                </article>
+            </div>
+        </section>
         
     </div>
     
@@ -626,7 +736,7 @@
         </div>
 
         <!-- PAGE 3: 動態辯論會議室 -->
-        <div id="page3" class="page" style="display:none !important;" style="padding: 12px 20px 130px; position: relative;">
+        <div id="page3" class="page" style="display:none !important; padding: 12px 20px 130px; position: relative;">
             <div class="chat-container" id="chat-box" style="padding-bottom: 20px;">
                 <div class="sys-msg"><span>🚨 系統警報：BTC 盤中急跌 5%，跌破關鍵支撐<br>已啟動緊急辯論會議</span></div>
             </div>
@@ -703,6 +813,16 @@
         </div>
     </div>
     
+    <button id="community-launch-btn" type="button" onclick="toggleCommunityPanel()">💬 社群討論</button>
+    <section id="community-panel" class="community-panel" aria-label="社群討論">
+        <div class="community-header"><span>💬 社群討論</span><small id="community-market-label">BTCUSDT</small><button class="community-close" type="button" onclick="toggleCommunityPanel()" aria-label="關閉">×</button></div>
+        <div id="live-chat-messages" aria-live="polite"></div>
+        <div class="community-compose">
+            <input id="live-chat-name" maxlength="30" placeholder="暱稱">
+            <input id="live-chat-input" maxlength="500" placeholder="分享觀點；輸入 @AI 可請委員會回應" onkeydown="if(event.key==='Enter') sendLiveMessage()">
+            <button type="button" onclick="sendLiveMessage()">送出</button>
+        </div>
+    </section>
     <!-- 懸浮聊天按鈕 (定位於手機框內部) -->
     <div id="floating-chat-btn" onclick="toggleChatPanel()">
         🤖
@@ -742,7 +862,8 @@
     </div>
 </div>
 
-<script src="app.js?v=2" defer></script>
+<script src="config.js"></script>
+<script src="app.js?v=3" defer></script>
 <script>
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {

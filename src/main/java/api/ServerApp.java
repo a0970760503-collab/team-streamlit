@@ -23,7 +23,6 @@ import java.util.*;
 @RestController
 @CrossOrigin(origins = "*")
 public class ServerApp {
-
     private static final Gson gson = new Gson();
     private static final HttpClient httpClient = HttpClient.newHttpClient();
 

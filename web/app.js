@@ -2,11 +2,15 @@ let currentTopic = '';
 // 全域變數用以儲存從 JSON 讀取的數據與看盤資訊
 let globalData = null;
 let debateFinished = false;
+let debateMessagePending = false;
 let currentMarket = 'btcusdt';
 let currentPeriod = 5;
 let klineDataCache = [];
 let klineLayout = {}; // 預設看盤商品代號
 let activeDashboardView = 'home'; // 預設底層視圖：'home'（行情首頁）或 'chart'（詳細 K 線）
+const LEARNING_PROGRESS_KEY = 'max-ai-learning-progress-v1';
+const learningAnswers = { 1: 'USDT', 2: '1 天', 3: '先定風險上限' };
+let learningProgress = new Set();
 
 // P10：資料來源可信度追蹤。任何降級（agent_report.json／mockData／盤口或 K 線 Mock）
 // 都必須標記為非 live，並在畫面亮出警示橫幅，讓觀看者知道數值不是即時報價。
@@ -86,14 +90,14 @@ function updateDataSourceBanner() {
 
 // 預設的 Mock 備用數據，若 Fetch API 讀取失敗時將自動採用此資料
 const mockData = {
-    technical_agent: { 
-        rsi: 28.5, 
+    technical_agent: {
+        rsi: 28.5,
         signal: 'SELL',
         speech: '「我是技術分析師。目前 RSI 已經殺到了超賣區間的 28.5，均線死叉向下。短期在 96K 破位後，我認為下行空間依然被打開，在出現實質性築底訊號前，我強烈建議保持 SELL (平倉觀望)！」'
     },
-    sentiment_agent: { 
-        fear_greed: 18, 
-        sentiment: 'BUY', 
+    sentiment_agent: {
+        fear_greed: 18,
+        sentiment: 'BUY',
         sentiment_score: 85,
         speech: '「我是輿情情緒分析師。雖然盤面破位，但此時恐慌與貪婪指數已經跌入 18 的極度恐慌極值！歷史經驗表明散戶的情緒冰點往往是巨鯨掃貨的良機。社群上的看空聲浪已達極限，我偏向 BUY (防禦性買入)。」'
     },
@@ -113,14 +117,18 @@ const mockData = {
 };
 
 // 實作資料讀取 (Fetch API)：優先連線 Java Spring Boot REST API，失敗時降級讀取 agent_report.json 或 Mock
+// AWS deployment injects the API Gateway origin through config.js; local development uses same origin.
+const apiBaseUrl = String(window.APP_CONFIG?.apiBaseUrl || '').replace(/\/$/, '');
+const apiFetch = (path, options) => fetch(`${apiBaseUrl}${path}`, options);
+
 async function fetchData() {
     try {
         // 優先嘗試向 Java / Python 後端 8080 埠請求最新行情與動態 Agent 分析
-        const response = await fetch('/api/report');
+        const response = await apiFetch('/api/report');
         if (response.ok) {
             const apiData = await response.json();
             console.log('✅ 成功從後端 API 取得實時動態數據:', apiData);
-            
+
             // 將 API 資料 Normalize 為原本 UI 期望的 mockData 格式，防止 Crash
             globalData = JSON.parse(JSON.stringify(mockData)); // 深拷貝為基底
 
@@ -148,24 +156,24 @@ async function fetchData() {
                 // 風控長
                 globalData.investment_committee.risk_speech = apiData.debates[1].text;
                 globalData.investment_committee.risk_score = parseInt(apiData.debates[1].score || 50);
-                
+
                 // 情緒分析師
                 globalData.sentiment_agent.speech = apiData.debates[2].text;
                 globalData.sentiment_agent.sentiment = apiData.debates[2].signal || 'HOLD';
                 globalData.sentiment_agent.sentiment_score = parseInt(apiData.debates[2].score || 50);
                 globalData.sentiment_agent.fear_greed = parseInt(apiData.debates[2].score || 50);
-                
+
                 // 人格分析師
                 globalData.investment_committee.behavior_speech = apiData.debates[3].text;
                 globalData.investment_committee.behavior_score = parseInt(apiData.debates[3].score || 50);
             }
-            
+
             // 委員會總決議
             if (apiData.committee) {
                 const dec = apiData.committee.finalDecision || 'HOLD';
                 globalData.investment_committee.final_action = dec.includes('BUY') ? 'BUY' : (dec.includes('SELL') ? 'SELL' : 'HOLD');
                 globalData.investment_committee.committee_score = apiData.committee.confidenceScore || 50;
-                
+
                 // 清空預設的 chair_speech 讓 UI 自動利用 generateDynamicSpeech 動態生成
                 globalData.investment_committee.chair_speech = "";
             }
@@ -194,13 +202,14 @@ async function fetchData() {
         globalData.llm_input = { price_usd: null, change_24h: null };
         markDataSource('即時報價', 'unavailable', `${fallbackLabel}，非即時報價`);
     }
-    
+
     // 讀取成功後，立即渲染與數據相關的 UI
     updateUIWithData(globalData);
 }
 
 // 監聽網頁載入，自動初始化所有資料與真實圖表
 window.addEventListener('DOMContentLoaded', () => {
+    loadLearningProgress();
     fetchData();
     showDashboardHomeView();
 });
@@ -209,7 +218,7 @@ window.addEventListener('DOMContentLoaded', () => {
 async function fetchNews() {
     const newsContainer = document.getElementById('home-news-container');
     const phoneNewsContainer = document.getElementById('phone-news-list');
-    
+
     const loadingHtml = `
         <div style="color:var(--text-muted); text-align:center; padding:10px;">
             <span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>
@@ -220,12 +229,12 @@ async function fetchNews() {
     if (phoneNewsContainer) phoneNewsContainer.innerHTML = loadingHtml;
 
     try {
-        const response = await fetch('/api/news?_t=' + new Date().getTime());
+        const response = await apiFetch('/api/news?_t=' + new Date().getTime());
         if (response.ok) {
             const data = await response.json();
             const newsContainer = document.getElementById('home-news-container');
             const phoneNewsContainer = document.getElementById('phone-news-list');
-            
+
             if (data.news && data.news.length > 0) {
                 let html = '';
                 data.news.forEach(item => {
@@ -235,7 +244,7 @@ async function fetchNews() {
                         const d = new Date(item.pubDate);
                         if (!isNaN(d)) dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                     } catch(e) {}
-                    
+
                     html += `
                         <div style="padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <a href="${item.link}" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: bold; display: block; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
@@ -267,19 +276,19 @@ async function fetchNews() {
 // 前端獨立邏輯與動態拼接生成器
 function generateDynamicSpeech(agent, data) {
     const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
-    
+
     if (agent === 'technical') {
         const rsi = data.technical_agent.rsi;
         const signal = data.technical_agent.signal;
         const ma5 = data.technical_agent.ma5;
         const ma20 = data.technical_agent.ma20;
-        
+
         const openings = [
             `「從目前的 K 線結構和技術面指標來看，`,
             `「觀察 SOL 的即時技術走勢，`,
             `「針對目前的價格動量與趨勢，技術指標顯示：`
         ];
-        
+
         let rsiText = '';
         if (rsi > 70) {
             rsiText = `目前 RSI 已經達到超買區間的 ${rsi}，多頭情緒極度亢奮，但需警戒隨時而來的修正壓力。`;
@@ -288,7 +297,7 @@ function generateDynamicSpeech(agent, data) {
         } else {
             rsiText = `目前 RSI 處於中性偏調整的 ${rsi} 水平，價格在區間震盪整理，尚未出現極端的超買或超賣。`;
         }
-        
+
         let maText = '';
         if (ma5 !== undefined && ma20 !== undefined) {
             if (ma5 > ma20) {
@@ -307,7 +316,7 @@ function generateDynamicSpeech(agent, data) {
                 maText = `同時，均線糾結，短期內缺乏清晰的趨勢方向。`;
             }
         }
-        
+
         let conclusion = '';
         if (signal === 'BUY') {
             conclusion = `綜上，我認為應該把握超跌反彈或強勢突破的機會，強烈建議執行 BUY 策略！」`;
@@ -316,20 +325,20 @@ function generateDynamicSpeech(agent, data) {
         } else {
             conclusion = `此處多空分歧加劇，不宜貿然押注，我建議採取 HOLD 策略，空手靜待市場走穩！」`;
         }
-        
+
         return randomChoice(openings) + rsiText + maText + conclusion;
     }
-    
+
     if (agent === 'sentiment') {
         const fearGreed = data.sentiment_agent.fear_greed;
         const sentiment = data.sentiment_agent.sentiment;
-        
+
         const openings = [
             `「我是輿情與市場情緒分析師。`,
             `「從社群輿情和散戶情緒來看，`,
             `「輿情監測結果顯示，目前市場群眾的心理狀態非常微妙：`
         ];
-        
+
         let fgText = '';
         if (fearGreed >= 70) {
             fgText = `當前 Fear & Greed 指數為 ${fearGreed}，市場處於貪婪狀態，散戶 FOMO 情緒再度被點燃。`;
@@ -338,7 +347,7 @@ function generateDynamicSpeech(agent, data) {
         } else {
             fgText = `當前 Fear & Greed 指數為 ${fearGreed}，大眾情緒處於冷靜與觀望狀態，缺乏一致的共識。`;
         }
-        
+
         let socialText = '';
         if (sentiment === 'Bullish' || sentiment === 'BUY') {
             socialText = `在 Twitter 和 Discord 等社群上，看多情緒依然高漲，討論熱度爆表，買盤支持強勁。`;
@@ -347,7 +356,7 @@ function generateDynamicSpeech(agent, data) {
         } else {
             socialText = `社群情緒目前多空平衡，交易者多以防守或短線套利為主，整體情緒較為溫和。`;
         }
-        
+
         let conclusion = '';
         if (sentiment === 'Bullish' || sentiment === 'BUY') {
             conclusion = `眾人拾柴火焰高，在恐慌極值或強大共識支持下，我建議 BUY 偏多布局！」`;
@@ -356,20 +365,20 @@ function generateDynamicSpeech(agent, data) {
         } else {
             conclusion = `群眾看法極度分裂，情緒指標無指向，我認為在此區間 HOLD 觀望最為安全！」`;
         }
-        
+
         return randomChoice(openings) + fgText + socialText + conclusion;
     }
-    
+
     if (agent === 'risk') {
         const riskScore = data.investment_committee.risk_score;
         const action = data.investment_committee.final_action;
-        
+
         const openings = [
             `「風控長報告：從整體市場的風報比與槓桿率來看，`,
             `「我是風險控管師。從資金安全和防禦優先的原則出發，`,
             `「風控評估指出，當前的帳戶水位與波動率特徵顯示：`
         ];
-        
+
         let riskText = '';
         if (riskScore >= 70) {
             riskText = `目前的市場風險值高達 ${riskScore}，高槓桿清算地圖正在擴大，市場波動極為劇烈。`;
@@ -378,7 +387,7 @@ function generateDynamicSpeech(agent, data) {
         } else {
             riskText = `目前市場風險值為 ${riskScore}，波動率處於正常歷史均值，但上行與下行空間對稱。`;
         }
-        
+
         let actionText = '';
         if (action === 'BUY') {
             actionText = `雖然有一定的波動風險，但風報比對多頭極具吸引力，若做好單筆損益比控制即可進場。`;
@@ -387,7 +396,7 @@ function generateDynamicSpeech(agent, data) {
         } else {
             actionText = `在此水位頻繁開倉沒有利潤空間，反而會耗損手續費，防守是保全本金的最佳策略。`;
         }
-        
+
         let conclusion = '';
         if (action === 'BUY') {
             conclusion = `風控裁決：允許以低倉位執行 BUY，但必須严格設定保護性止損！」`;
@@ -396,20 +405,20 @@ function generateDynamicSpeech(agent, data) {
         } else {
             conclusion = `風控裁決：維持 HOLD 觀望，暫停新的開倉操作，保留最大購買力！」`;
         }
-        
+
         return randomChoice(openings) + riskText + actionText + conclusion;
     }
-    
+
     if (agent === 'behavior') {
         const behaviorScore = data.investment_committee.behavior_score;
         const action = data.investment_committee.final_action;
-        
+
         const openings = [
             `「我是行為人格分析師。結合用戶過往的交易行為歷史，`,
             `「從用戶的交易心理與人格特徵進行診斷：`,
             `「行為基因監測指出，在當前市場波動下，用戶非常容易產生情緒偏差：`
         ];
-        
+
         let behavText = '';
         if (behaviorScore >= 60) {
             behavText = `用戶的行為偏差分數為 ${behaviorScore} 分，極易在類似的極端行情中誘發 FOMO 追高或 Tilt (心態崩潰) 割肉。`;
@@ -418,7 +427,7 @@ function generateDynamicSpeech(agent, data) {
         } else {
             behavText = `用戶的行為分數為 ${behaviorScore} 分，雖然大體保持理性，但連續虧損時容易產生報復性交易的傾向。`;
         }
-        
+
         let actionText = '';
         if (action === 'BUY') {
             actionText = `此時買入雖符合數據，但必須遵循計畫建倉，避免因一時暴利幻想而重倉梭哈。`;
@@ -427,7 +436,7 @@ function generateDynamicSpeech(agent, data) {
         } else {
             actionText = `此時 HOLD 的建議旨在幫助用戶阻斷無意義的頻繁操作，戒掉手癢的衝動交易毛病。`;
         }
-        
+
         let conclusion = '';
         if (action === 'BUY') {
             conclusion = `我建議：分批佈局 BUY，嚴格遵守預設交易計劃，防止追高情緒失控！」`;
@@ -436,10 +445,10 @@ function generateDynamicSpeech(agent, data) {
         } else {
             conclusion = `我建議：執行 HOLD 觀望，暫時關閉交易界面，強迫自己進入冷靜期！」`;
         }
-        
+
         return randomChoice(openings) + behavText + actionText + conclusion;
     }
-    
+
     if (agent === 'chair') {
         const tech = data.investment_committee.technical_score;
         const sent = data.investment_committee.sentiment_score;
@@ -450,18 +459,18 @@ function generateDynamicSpeech(agent, data) {
         const source = data.dataSource;
         const priceText = formatPriceText(data.llm_input && data.llm_input.price_usd, source);
         const changeText = formatChangeText(data.llm_input && data.llm_input.change_24h, source);
-        
+
         const openings = [
             `「我是委員會主席。感謝各位委員的精彩陳述。`,
             `「投資委員會最終決議已出爐。綜合考量各維度數據：`,
             `「本閉門會議圓滿結束，現將各項量化指標總結如下：`
         ];
-        
+
         const priceSummary = priceText === PRICE_UNAVAILABLE
             ? `SOL 即時報價目前無法取得（資料來源異常，本次未使用任何替代價格）。`
             : `當前 SOL 市場報價為 $${priceText} (24小時變動: ${changeText})。`;
         const summary = `${priceSummary}技術指標得分 ${tech}，情緒指數得分 ${sent}，風控長評分 ${risk} 分，人格特質偏離度 ${behav} 分。綜合加權得分為 ${score} 分。`;
-        
+
         let verdict = '';
         if (action === 'BUY') {
             verdict = `目前市場多頭力量強勁且情緒共識達成。本委員會最終決議：執行 BUY (買入)！請引導用戶分批建倉並設置止損。`;
@@ -470,10 +479,10 @@ function generateDynamicSpeech(agent, data) {
         } else {
             verdict = `當前市場多空分歧巨大，且交易性價比極低，此處盲目交易得不償失。本委員會最終決議：執行 HOLD (觀望防守)！強制保留 100% 現金購買力，靜待市場築底。`;
         }
-        
+
         return randomChoice(openings) + summary + verdict;
     }
-    
+
     return '';
 }
 
@@ -481,20 +490,20 @@ let debateHistory = [];
 
 function getScriptLines(data) {
     return [
-        { 
-            agent: 'tech', icon: '📈', name: '技術分析師', color: 'var(--primary)', 
+        {
+            agent: 'tech', icon: '📈', name: '技術分析師', color: 'var(--primary)',
             text: data.technical_agent.speech || "技術面資料載入中..."
         },
-        { 
-            agent: 'sent', icon: '🌐', name: '情緒分析師', color: 'var(--success)', 
+        {
+            agent: 'sent', icon: '🌐', name: '情緒分析師', color: 'var(--success)',
             text: data.sentiment_agent.speech || "情緒面資料載入中..."
         },
-        { 
-            agent: 'risk', icon: '🛡️', name: '風控長', color: 'var(--warning)', 
+        {
+            agent: 'risk', icon: '🛡️', name: '風控長', color: 'var(--warning)',
             text: data.investment_committee.risk_speech || "風控資料載入中..."
         },
-        { 
-            agent: 'behav', icon: '🧠', name: '人格分析師', color: 'var(--secondary)', 
+        {
+            agent: 'behav', icon: '🧠', name: '人格分析師', color: 'var(--secondary)',
             text: data.investment_committee.behavior_speech || "行為資料載入中..."
         }
     ];
@@ -503,7 +512,7 @@ function getScriptLines(data) {
 async function renderChatMessage(line) {
     const chatBox = document.getElementById('debate-messages-container');
     const typingId = 'typing-' + Date.now() + Math.random().toString(36).substr(2, 9);
-    
+
     if (line.type === 'sys') {
         chatBox.insertAdjacentHTML('beforeend', `<div class="sys-msg"><span>${line.text}</span></div>`);
         chatBox.scrollTop = chatBox.scrollHeight;
@@ -538,12 +547,12 @@ async function startDebate(initialUserText = null) {
     // 顯示 Tab 並且切換過去
     document.getElementById('tab-btn-debate').style.display = 'block';
     switchTab('debate');
-    
+
     if (debateFinished) {
         document.getElementById('decision-btn-area').style.display = 'flex';
         return;
     }
-    
+
     // 設定標題，讓用戶知道當前討論的幣種
     document.getElementById('debate-sys-msg').innerHTML = `<span>🚨 系統警報：已針對 ${currentTopic || currentMarket} 啟動緊急辯論會議</span>`;
 
@@ -557,15 +566,15 @@ async function startDebate(initialUserText = null) {
         // 動態生成辯論
         debateHistory.push({ name: "人類用戶", text: initialUserText, role: "user" });
         await renderChatMessage({ agent: 'chair', icon: '👤', name: '人類用戶', color: '#fff', text: initialUserText });
-        
+
         try {
-            const response = await fetch('/api/chat_debate', {
+            const response = await apiFetch('/api/debate-message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ history: debateHistory, topic: currentTopic || currentMarket })
+                body: JSON.stringify({ market: currentMarket, message: initialUserText })
             });
             const resData = await response.json();
-            
+
             if (resData && resData.debates) {
                 for (let reply of resData.debates) {
                     debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
@@ -584,7 +593,7 @@ async function startDebate(initialUserText = null) {
             await renderChatMessage(scriptLines[i]);
         }
     }
-    
+
     debateFinished = true;
     setTimeout(() => {
         document.getElementById('decision-btn-area').style.display = 'flex';
@@ -603,23 +612,23 @@ async function sendDebateMsg() {
     const input = document.getElementById('debate-input');
     const text = input.value.trim();
     if (!text) return;
-    
+
     input.value = '';
     document.getElementById('debate-input-area').style.display = 'none';
-    
+
     // Add user message to UI and history
     debateHistory.push({ name: "人類用戶", text: text, role: "user" });
     await renderChatMessage({ agent: 'chair', icon: '👤', name: '人類用戶', color: '#fff', text: text });
-    
+
     // Call backend to get AI responses
     try {
-        const response = await fetch('/api/chat_debate', {
+        const response = await apiFetch('/api/debate-message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history: debateHistory, topic: currentTopic || currentMarket })
+            body: JSON.stringify({ market: currentMarket, message: text })
         });
         const resData = await response.json();
-        
+
         if (resData && resData.debates) {
             for (let reply of resData.debates) {
                 debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
@@ -630,26 +639,26 @@ async function sendDebateMsg() {
         console.error("Chat Debate Error:", e);
         await renderChatMessage({ type: 'sys', text: `連線異常: ${e}` });
     }
-    
+
     document.getElementById('debate-action-btns').style.display = 'flex';
 }
 
 async function endDebate() {
     document.getElementById('decision-btn-area').style.display = 'none';
     await renderChatMessage({ type: 'sys', text: '⏱️ 辯論結束，主席正在彙整最終共識...' });
-    
+
     try {
-        const response = await fetch('/api/conclude_debate', {
+        const response = await apiFetch('/api/debate-message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history: debateHistory, topic: currentTopic || currentMarket })
+            body: JSON.stringify({ market: currentMarket, message: '請根據前述討論，整理研究結論與後續觀察重點。' })
         });
         const resData = await response.json();
-        
+
         // Render Chair Summary in chat before navigating
         await renderChatMessage({ agent: 'chair', icon: '👑', name: '主席 Agent', color: '#ffd700', text: resData.summary });
         await new Promise(r => setTimeout(r, 1500));
-        
+
         // Populate Page 4 UI
         if (globalData && globalData.investment_committee) {
             globalData.investment_committee.final_action = resData.final_action;
@@ -658,7 +667,7 @@ async function endDebate() {
         }
         updateUIWithData(globalData);
         nav('page4');
-        
+
     } catch (e) {
         console.error("Conclude Debate Error:", e);
         await renderChatMessage({ type: 'sys', text: `結案連線異常: ${e}` });
@@ -835,57 +844,73 @@ function updateUIWithData(data) {
 
 // 執行下單按鈕觸發：雙向數據流 API 串接
 async function executeOrder() {
-    try {
-        const btnEl = document.getElementById('order-btn-p5');
-        if (btnEl) btnEl.innerText = '⌛ 正在連線 MAX API 發起下單...';
-
-        const response = await fetch('/api/trade', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                market: 'soltwd',
-                side: 'buy',
-                volume: 1.0
-            })
-        });
-
-        if (response.ok) {
-            const resData = await response.json();
-            console.log('✅ 雙向數據流下單成功:', resData);
-            const descEl = document.getElementById('success-desc-p5');
-            if (descEl) {
-                if (resData.success === false || resData.price === null || resData.price === undefined) {
-                    // P10：報價不可用而中止委託時，不得顯示任何成交金額
-                    markDataSource('下單報價', 'unavailable', resData.error || '報價不可用，委託已中止');
-                    descEl.innerHTML = `交易狀態: <strong>${resData.status || '已中止'}</strong><br>` +
-                                       `執行金額: <strong>${PRICE_UNAVAILABLE}</strong><br>` +
-                                       `${resData.message || '即時報價不可用，未送出任何委託。'}`;
-                } else {
-                    markDataSource('下單報價', 'live');
-                    descEl.innerHTML = `訂單編號: <strong>${resData.orderId}</strong><br>` +
-                                       `交易狀態: <strong>${resData.status}</strong><br>` +
-                                       `執行金額: <strong>$${resData.price} TWD</strong> (${resData.executedAt})<br>` +
-                                       `${resData.message}`;
-                }
-            }
-        }
-    } catch (e) {
-        console.warn('雙向數據流下單 API 呼叫失敗，改為本地模擬觸發:', e);
-    }
-    
+    // The AWS deployment intentionally does not expose a real order endpoint.
+    const btnEl = document.getElementById('order-btn-p5');
+    const descEl = document.getElementById('success-desc-p5');
+    if (btnEl) btnEl.innerText = '🧪 已完成模擬下單（未送出真實委託）';
+    if (descEl) descEl.textContent = '這是公開展示網站的模擬交易流程；系統不會儲存或使用任何 MAX 交易金鑰，也不會送出委託。';
     document.getElementById('success').style.display = 'flex';
+}
+
+function appendDebateMessage(agent, icon, name, color, text) {
+    const chatBox = document.getElementById('chat-box');
+    if (!chatBox) return;
+    const safeText = escapeClaudeHtml(text).replace(/\n/g, '<br>');
+    chatBox.insertAdjacentHTML('beforeend', `
+        <div class="msg-block">
+            <div class="avatar ${agent}">${icon}</div>
+            <div class="msg-content">
+                <div class="msg-header"><span class="agent-name" style="color:${color}">${name}</span></div>
+                <div class="msg-bubble">${safeText}</div>
+            </div>
+        </div>`);
+    chatBox.scrollTop = chatBox.scrollHeight;
+}
+
+async function sendDebateMessage() {
+    const input = document.getElementById('debate-input');
+    const button = document.getElementById('debate-send-btn');
+    if (!input || debateMessagePending) return;
+    const message = input.value.trim();
+    if (!message) return;
+
+    debateMessagePending = true;
+    input.value = '';
+    input.disabled = true;
+    if (button) { button.disabled = true; button.textContent = '討論中…'; }
+    appendDebateMessage('behav', '🗣️', '您', 'var(--text-main)', message);
+
+    try {
+        const response = await apiFetch('/api/debate-message', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ market: currentMarket, message })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || '委員會暫時無法回應。');
+        const replies = payload.replies || {};
+        appendDebateMessage('tech', '📈', '技術分析師', 'var(--primary)', replies.technical || '我會把您的觀點納入技術條件的追蹤。');
+        appendDebateMessage('risk', '🛡️', '風控長', 'var(--warning)', replies.risk || '我會依您的風險界線重新檢視情境。');
+        appendDebateMessage('chair', '👑', '主席 Agent', '#ffd700', replies.chair || '已記錄您的意見，僅作研究討論，不構成交易指示。');
+    } catch (error) {
+        appendDebateMessage('chair', '👑', '主席 Agent', '#ffd700', error.message || '目前無法取得回應，請稍後再試。');
+    } finally {
+        debateMessagePending = false;
+        input.disabled = false;
+        input.focus();
+        if (button) { button.disabled = false; button.textContent = '加入'; }
+    }
 }
 
 // 頁面導航控制
 function nav(pageId) {
     const pages = document.querySelectorAll('.page');
     pages.forEach(p => p.classList.remove('active'));
-    
+
     const targetPage = document.getElementById(pageId);
     if (targetPage) {
         targetPage.classList.add('active');
     }
-    
+
     // 動態更新導航列狀態與顏色，提升科技儀式感
     const statusEl = document.getElementById('nav-status');
     const dotEl = document.getElementById('nav-dot');
@@ -999,19 +1024,8 @@ async function sendAssistantMsg() {
         chatBox.insertAdjacentHTML('beforeend', systemMsgHtml);
         chatBox.scrollTop = chatBox.scrollHeight;
 
-        try {
-            const res = await fetch('/api/extract_topic', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: userText })
-            });
-            const data = await res.json();
-            if (data.topic) {
-                currentTopic = data.topic.toUpperCase();
-            }
-        } catch (e) {
-            console.error("Extract topic error:", e);
-        }
+        const topicMatch = userText.match(/\b(BTC|ETH|DOGE|SOL)\b/i);
+        currentTopic = topicMatch ? topicMatch[1].toUpperCase() : currentMarket.toUpperCase();
 
         // 直接啟動辯論 Tab
         setTimeout(() => {
@@ -1023,14 +1037,14 @@ async function sendAssistantMsg() {
         // B. 按鈕未發光，智能動態對話問答 (Smart AI Financial Assistant)
         let replyText = "連線異常，無法回應。";
         try {
-            const res = await fetch('/api/chat_assistant', {
+            const res = await apiFetch('/api/debate-message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ text: userText, topic: currentTopic || currentMarket })
+                body: JSON.stringify({ market: currentMarket, message: userText })
             });
             const data = await res.json();
-            if (data.text) {
-                replyText = data.text;
+            if (data.replies && data.replies.chair) {
+                replyText = data.replies.chair;
             }
         } catch (e) {
             console.error("Chat assistant error:", e);
@@ -1063,10 +1077,83 @@ function toggleChatPanel() {
     }
 }
 
+let claudeAnalysisPending = false;
+
+function escapeClaudeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[char]));
+}
+
+function closeClaudeAnalysis() {
+    const drawer = document.getElementById('claude-analysis-drawer');
+    if (drawer) drawer.classList.remove('open');
+}
+
+function renderClaudeAnalysis(payload) {
+    const content = document.getElementById('claude-analysis-content');
+    const meta = document.getElementById('claude-analysis-meta');
+    if (!content || !payload.analysis) return;
+
+    const analysis = payload.analysis;
+    const indicators = payload.indicators || {};
+    const riskLabels = { low: '低', medium: '中', high: '高' };
+    const watchpoints = Array.isArray(analysis.watchpoints) ? analysis.watchpoints : [];
+    const formattedTime = payload.generatedAt ? new Date(payload.generatedAt).toLocaleString('zh-TW') : '';
+    if (meta) {
+        meta.textContent = `${payload.market || currentMarket.toUpperCase()} · ${payload.period || currentPeriod} 分 K · 風險：${riskLabels[String(analysis.risk_level).toLowerCase()] || analysis.risk_level || '中'} · ${formattedTime}`;
+    }
+    content.innerHTML = `
+        <div class="claude-analysis-section">
+            <h4>技術面分析</h4>
+            <p>${escapeClaudeHtml(analysis.technical_analysis)}</p>
+            <p style="margin-top:7px; color:var(--text-muted); font-size:10px;">RSI ${escapeClaudeHtml(indicators.rsi14)} · SMA20 ${escapeClaudeHtml(indicators.sma20)} · SMA50 ${escapeClaudeHtml(indicators.sma50)} · MACD ${escapeClaudeHtml(indicators.macd)}</p>
+        </div>
+        <div class="claude-analysis-section">
+            <h4>最近 7 天新聞分析</h4>
+            <p>${escapeClaudeHtml(analysis.news_analysis)}</p>
+        </div>
+        <div class="claude-analysis-section">
+            <h4>整合結論</h4>
+            <p>${escapeClaudeHtml(analysis.overall_summary)}</p>
+            ${watchpoints.length ? `<ul class="claude-watchpoints">${watchpoints.map(item => `<li>${escapeClaudeHtml(item)}</li>`).join('')}</ul>` : ''}
+        </div>
+        <p style="margin:10px 0 0; color:var(--text-muted); font-size:10px;">此為 AI 研究摘要，不構成投資或交易建議。</p>
+    `;
+}
+
+async function openClaudeAnalysis() {
+    const drawer = document.getElementById('claude-analysis-drawer');
+    const content = document.getElementById('claude-analysis-content');
+    const meta = document.getElementById('claude-analysis-meta');
+    if (!drawer || !content || claudeAnalysisPending) return;
+
+    drawer.classList.add('open');
+    claudeAnalysisPending = true;
+    if (meta) meta.textContent = `${currentMarket.toUpperCase()} · 正在讀取 K 線、新聞並請 Claude 分析…`;
+    content.innerHTML = '<div style="color:var(--primary); padding:10px 0;">✨ Claude 正在統整技術指標與最近 7 天新聞，請稍候…</div>';
+
+    try {
+        const response = await apiFetch('/api/ai-analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ market: currentMarket, period: currentPeriod })
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Claude 分析請求失敗');
+        renderClaudeAnalysis(payload);
+    } catch (error) {
+        if (meta) meta.textContent = `${currentMarket.toUpperCase()} · 無法完成分析`;
+        content.innerHTML = `<div style="color:var(--danger);">${escapeClaudeHtml(error.message || 'Claude 分析暫時不可用。')}</div><div style="margin-top:8px; color:var(--text-muted); font-size:10px;">請確認伺服器已設定 ANTHROPIC_API_KEY，並稍後重試。</div>`;
+    } finally {
+        claudeAnalysisPending = false;
+    }
+}
+
 // 抓取 MAX 交易所真實 K 線走勢資料 (最近 35 根 15 分鐘線，具備 Mock 容錯機制)
 async function fetchMaxKlineData() {
     try {
-        const res = await fetch(`/api/proxy?path=/api/v2/k&market=${currentMarket}&limit=35&period=${currentPeriod}`);
+        const res = await apiFetch(`/api/proxy?path=/api/v2/k&market=${currentMarket}&limit=35&period=${currentPeriod}`);
         if (res.ok) {
             const kData = await res.json();
             markDataSource('K 線走勢', 'live');
@@ -1188,7 +1275,7 @@ function renderKlineChart(kData, isLive = true) {
         svgContent += `<polyline points="${maPoints.join(' ')}" fill="none" stroke="var(--primary)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 3px var(--primary)); opacity:0.85;" />`;
     }
 
-    
+
     // 十字線與互動群組
     svgContent += `
         <g id="crosshair-group" style="display:none; pointer-events:none;">
@@ -1198,13 +1285,13 @@ function renderKlineChart(kData, isLive = true) {
             <text id="crosshair-y-label" x="${width - 50}" y="10" fill="#fff" font-size="9" font-family="monospace">0.0</text>
         </g>
     `;
-    
+
     svg.innerHTML = svgContent;
-    
+
     // 快取資訊供事件查表
     klineDataCache = dataSlice;
     klineLayout = { width, height, chartHeight, colWidth, paddingLeft, maxPrice, minPrice };
-    
+
     setupChartInteractions(svg);
 
 
@@ -1235,7 +1322,7 @@ function renderKlineChart(kData, isLive = true) {
 async function fetchMaxMarketData() {
     try {
         // 1. 獲取盤口深度委託 (MAX Open API)
-        const depthRes = await fetch(`/api/proxy?path=/api/v2/depth&market=${currentMarket}&limit=10`);
+        const depthRes = await apiFetch(`/api/proxy?path=/api/v2/depth&market=${currentMarket}&limit=10`);
         if (depthRes.ok) {
             const depthData = await depthRes.json();
             updatePhoneOrderBook(depthData);
@@ -1244,7 +1331,7 @@ async function fetchMaxMarketData() {
         }
 
         // 2. 獲取即時成交價 (MAX Open API)
-        const tickerRes = await fetch(`/api/proxy?path=/api/v2/tickers/${currentMarket}`);
+        const tickerRes = await apiFetch(`/api/proxy?path=/api/v2/tickers/${currentMarket}`);
         if (tickerRes.ok) {
             const tickerData = await tickerRes.json();
             markDataSource('盤口報價', 'live');
@@ -1256,11 +1343,11 @@ async function fetchMaxMarketData() {
         console.warn(`無法讀取 MAX 交易所實時公開 API (${currentMarket})，啟用盤口 Mock 備用資料:`, e.message);
         // P10：Mock 盤口必須標記為非即時，中間價顯示 '--'
         markDataSource('盤口報價', 'unavailable', 'Mock 模擬盤口，非即時委託簿');
-        
+
         // 抓取或生成當前代幣對應的基準價格，產生 Mock 深度與價格
         const mockKline = generateMockKlineData(currentMarket, currentPeriod);
         const lastPrice = mockKline[mockKline.length - 1][4];
-        
+
         const depthMock = {
             asks: [
                 [(lastPrice + lastPrice * 0.0004).toFixed(2), (Math.random() * 2 + 0.1).toFixed(2)],
@@ -1284,7 +1371,7 @@ function updatePhoneOrderBook(depthData) {
 
     // 定義要顯示的檔位數量 (最多 6 檔)
     const displayLimit = 6;
-    
+
     // 計算最大量，用來畫背景深度條
     let maxVol = 0.001; // 防呆
     if (depthData.asks) depthData.asks.slice(0, displayLimit).forEach(a => maxVol = Math.max(maxVol, Number(a[1])));
@@ -1294,7 +1381,7 @@ function updatePhoneOrderBook(depthData) {
     if (depthData.asks && depthData.asks.length > 0) {
         let asks = depthData.asks.slice(0, displayLimit);
         asks.reverse(); // 讓最低賣價在最底下 (靠近中間的 Mid Price)
-        
+
         let html = '';
         asks.forEach(ask => {
             const price = Number(ask[0]);
@@ -1314,7 +1401,7 @@ function updatePhoneOrderBook(depthData) {
     // Bids (買單，價高在上，價低在下，API 預設就是 descending，不需 reverse)
     if (depthData.bids && depthData.bids.length > 0) {
         let bids = depthData.bids.slice(0, displayLimit);
-        
+
         let html = '';
         bids.forEach(bid => {
             const price = Number(bid[0]);
@@ -1351,24 +1438,24 @@ function updatePhoneMidPrice(tickerData, isLive = true) {
 function changeMarket(newMarket) {
     if (!newMarket) return;
     currentMarket = newMarket.toLowerCase().trim();
-    
+
     // 更新詳細看盤頁的商品名稱
     const displayMarket = currentMarket.toUpperCase();
     const titleEl = document.getElementById('kline-market-title');
     const obTitleEl = document.getElementById('order-book-market-title');
     if (titleEl) titleEl.innerText = displayMarket;
     if (obTitleEl) obTitleEl.innerText = displayMarket;
-    
+
     // 立即清空舊的畫布與報價
     const svg = document.getElementById('kline-svg');
     if (svg) svg.innerHTML = '<text x="50%" y="50%" fill="var(--text-muted)" font-size="12" text-anchor="middle">Loading...</text>';
-    
+
     const lastPriceEl = document.getElementById('kline-last-price');
     if (lastPriceEl) {
         lastPriceEl.innerText = '--';
         lastPriceEl.style.color = '#fff';
     }
-    
+
     const highEl = document.getElementById('kline-high');
     const lowEl = document.getElementById('kline-low');
     if (highEl) highEl.innerText = '--';
@@ -1381,10 +1468,10 @@ function changeMarket(newMarket) {
     const bidContainer = document.getElementById('phone-bids');
     if (askContainer) askContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px; padding: 10px;">讀取中...</div>';
     if (bidContainer) bidContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px; padding: 10px;">讀取中...</div>';
-    
+
     const newsContainer = document.getElementById('phone-news-list');
     if (newsContainer) newsContainer.innerHTML = '<div style="color:var(--text-muted); font-size:10px; padding: 10px;">正在加載即時新聞...</div>';
-    
+
     // 滑入/切換為詳細 K 線圖視圖
     showKlineChartView();
 }
@@ -1397,15 +1484,17 @@ function showDashboardHomeView() {
     activeDashboardView = 'home';
     const homeView = document.getElementById('dashboard-home-view');
     const chartView = document.getElementById('dashboard-chart-view');
+    const learningView = document.getElementById('learning-view');
     if (homeView) homeView.style.display = 'flex';
     if (chartView) chartView.style.display = 'none';
-    
+    if (learningView) learningView.classList.remove('open');
+
     if (homePollingInterval) clearInterval(homePollingInterval);
     if (chartPollingInterval) clearInterval(chartPollingInterval);
-    
+
     fetchMaxAllTickers();
     updateHomeNews();
-    
+
     homePollingInterval = setInterval(() => {
         if (activeDashboardView === 'home') {
             fetchMaxAllTickers();
@@ -1417,16 +1506,18 @@ function showKlineChartView() {
     activeDashboardView = 'chart';
     const homeView = document.getElementById('dashboard-home-view');
     const chartView = document.getElementById('dashboard-chart-view');
+    const learningView = document.getElementById('learning-view');
     if (homeView) homeView.style.display = 'none';
     if (chartView) chartView.style.display = 'flex';
-    
+    if (learningView) learningView.classList.remove('open');
+
     if (homePollingInterval) clearInterval(homePollingInterval);
     if (chartPollingInterval) clearInterval(chartPollingInterval);
-    
+
     fetchMaxKlineData();
     fetchMaxMarketData();
     updatePhoneNews(currentMarket);
-    
+
     chartPollingInterval = setInterval(() => {
         if (activeDashboardView === 'chart') {
             fetchMaxKlineData();
@@ -1435,14 +1526,101 @@ function showKlineChartView() {
     }, 15000); // 延長至 15 秒避免 MAX API Rate Limit 封鎖
 }
 
+// 學習闖關：進度僅保存於目前瀏覽器，不會送到伺服器。
+function loadLearningProgress() {
+    try {
+        const saved = JSON.parse(localStorage.getItem(LEARNING_PROGRESS_KEY) || '[]');
+        learningProgress = new Set(saved.filter(stage => Number.isInteger(stage) && stage >= 1 && stage <= 3));
+    } catch (error) {
+        learningProgress = new Set();
+    }
+}
+
+function saveLearningProgress() {
+    localStorage.setItem(LEARNING_PROGRESS_KEY, JSON.stringify([...learningProgress]));
+}
+
+function showLearningView() {
+    activeDashboardView = 'learning';
+    if (homePollingInterval) clearInterval(homePollingInterval);
+    if (chartPollingInterval) clearInterval(chartPollingInterval);
+    const homeView = document.getElementById('dashboard-home-view');
+    const chartView = document.getElementById('dashboard-chart-view');
+    const learningView = document.getElementById('learning-view');
+    if (homeView) homeView.style.display = 'none';
+    if (chartView) chartView.style.display = 'none';
+    if (learningView) learningView.classList.add('open');
+    renderLearningProgress();
+}
+
+function renderLearningProgress() {
+    const completed = learningProgress.size;
+    const progressBar = document.getElementById('learn-progress-bar');
+    const progressText = document.getElementById('learn-progress-text');
+    if (progressBar) progressBar.style.width = `${(completed / 3) * 100}%`;
+    if (progressText) progressText.textContent = completed === 3 ? '🎉 已完成 3 / 3 關，完成新手訓練！' : `已完成 ${completed} / 3 關`;
+
+    document.querySelectorAll('.stage-card[data-stage]').forEach(card => {
+        const stage = Number(card.dataset.stage);
+        const unlocked = stage === 1 || learningProgress.has(stage - 1);
+        const done = learningProgress.has(stage);
+        card.classList.toggle('locked', !unlocked);
+        card.classList.toggle('done', done);
+        const status = card.querySelector('.stage-status');
+        if (status) status.textContent = done ? '✓ 已完成' : (unlocked ? '進行中' : '尚未解鎖');
+        card.querySelectorAll('.quiz-option').forEach(button => {
+            button.disabled = !unlocked || done;
+            button.classList.remove('correct', 'wrong');
+            if (done && button.dataset.answer === learningAnswers[stage]) button.classList.add('correct');
+        });
+        const feedback = document.getElementById(`quiz-feedback-${stage}`);
+        if (feedback && done) {
+            feedback.textContent = '答對了！下一關已解鎖。';
+            feedback.className = 'quiz-feedback success';
+        } else if (feedback) {
+            feedback.textContent = '';
+            feedback.className = 'quiz-feedback';
+        }
+    });
+}
+
+function answerLearningQuiz(stage, answer) {
+    const feedback = document.getElementById(`quiz-feedback-${stage}`);
+    if (learningProgress.has(stage) || (stage > 1 && !learningProgress.has(stage - 1))) return;
+    if (answer === learningAnswers[stage]) {
+        learningProgress.add(stage);
+        saveLearningProgress();
+        renderLearningProgress();
+    } else if (feedback) {
+        feedback.textContent = '再想一下：回到本關的知識點，找找關鍵字。';
+        feedback.className = 'quiz-feedback';
+        const selected = document.querySelector(`.quiz-option[data-stage="${stage}"][data-answer="${answer}"]`);
+        if (selected) {
+            selected.classList.add('wrong');
+            setTimeout(() => selected.classList.remove('wrong'), 700);
+        }
+    }
+}
+
+function resetLearningProgress() {
+    learningProgress.clear();
+    localStorage.removeItem(LEARNING_PROGRESS_KEY);
+    renderLearningProgress();
+}
+
+function startMarketPractice() {
+    changeMarket('btcusdt');
+    showKlineChartView();
+}
+
 // 抓取多檔自選代幣即時報價 (對接 MAX 官方 Tickers API，具備 Mock 容錯)
 async function fetchMaxAllTickers() {
     const listContainer = document.getElementById('market-list-container');
     if (!listContainer) return;
-    
+
     const markets = ['btcusdt', 'ethusdt', 'dogeusdt', 'solusdt'];
     try {
-        const res = await fetch('/api/proxy?path=/api/v2/tickers');
+        const res = await apiFetch('/api/proxy?path=/api/v2/tickers');
         if (res.ok) {
             const allTickers = await res.json();
             markDataSource('行情列表', 'live');
@@ -1458,7 +1636,7 @@ async function fetchMaxAllTickers() {
     // 其餘一律顯示 '--' 並亮出警示橫幅。
     const backendTickers = {};
     try {
-        const backendRes = await fetch('/api/market?market=soltwd');
+        const backendRes = await apiFetch('/api/market?market=soltwd');
         if (backendRes.ok) {
             const bData = await backendRes.json();
             if (bData.dataSource === 'live' && bData.price !== null && bData.price !== undefined) {
@@ -1479,7 +1657,7 @@ async function fetchMaxAllTickers() {
 function renderMarketList(allTickers, markets) {
     const listContainer = document.getElementById('market-list-container');
     if (!listContainer) return;
-    
+
     let html = '';
     markets.forEach(m => {
         const data = allTickers ? allTickers[m] : null;
@@ -1524,34 +1702,34 @@ function renderMarketList(allTickers, markets) {
 async function updateHomeNews() {
     const homeNewsContainer = document.getElementById('home-news-container');
     if (!homeNewsContainer) return;
-    
+
     homeNewsContainer.innerHTML = `
         <div style="color:var(--text-muted); text-align:center; padding:10px;">
             <span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>
             載入即時快訊中...
         </div>
     `;
-    
+
     try {
-        const response = await fetch('/api/news?_t=' + new Date().getTime());
+        const response = await apiFetch('/api/news?_t=' + new Date().getTime());
         if (response.ok) {
             const data = await response.json();
             if (data.news && data.news.length > 0) {
                 let html = '';
                 const colors = ['var(--primary)', 'var(--secondary)', 'var(--warning)', 'var(--success)', 'var(--danger)'];
-                
+
                 data.news.slice(0, 3).forEach((item, index) => {
                     let dateStr = item.pubDate;
                     try {
                         const d = new Date(item.pubDate);
                         if (!isNaN(d)) dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                     } catch(e) {}
-                    
+
                     const borderColor = colors[index % colors.length];
                     const marginTop = index === 0 ? '0' : '6px';
                     const borderTop = index === 0 ? 'none' : '1px solid rgba(255,255,255,0.03)';
                     const paddingTop = index === 0 ? '0' : '6px';
-                    
+
                     html += `
                         <div style="border-top: ${borderTop}; padding-top: ${paddingTop}; border-left: 2px solid ${borderColor}; padding-left: 6px; margin-top: ${marginTop};">
                             <span style="color:var(--text-muted); font-size: 9px;">${dateStr}</span>
@@ -1580,7 +1758,7 @@ function generateMockKlineData(market, period = 5) {
     else if (market.includes('doge')) basePrice = 0.12;
     else if (market.includes('sol')) basePrice = 180;
     else if (market.includes('xrp')) basePrice = 0.58;
-    
+
     const mockData = [];
     let currentPrice = basePrice;
     const now = Math.floor(Date.now() / 1000);
@@ -1603,12 +1781,12 @@ function generateMockKlineData(market, period = 5) {
 async function updatePhoneNews(market) {
     const newsContainer = document.getElementById('phone-news-list');
     if (!newsContainer) return;
-    
+
     newsContainer.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:10px;"><span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>載入即時快訊中...</div>';
-    
+
     try {
         const symbol = market.toUpperCase().replace('USDT', '').replace('TWD', '');
-        const response = await fetch(`/api/news?market=${symbol}`);
+        const response = await apiFetch(`/api/news?market=${symbol}`);
         if (response.ok) {
             const data = await response.json();
             if (data.news && data.news.length > 0) {
@@ -1619,7 +1797,7 @@ async function updatePhoneNews(market) {
                         const d = new Date(item.pubDate);
                         if (!isNaN(d)) dateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
                     } catch(e) {}
-                    
+
                     html += `
                         <div style="padding-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.05); margin-bottom: 6px;">
                             <a href="${item.link}" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: bold; display: block; margin-bottom: 2px;">
@@ -1645,13 +1823,13 @@ function changePeriod(period, btnElement) {
     const btns = document.querySelectorAll('.period-btn');
     btns.forEach(b => b.classList.remove('active'));
     if (btnElement) btnElement.classList.add('active');
-    
+
     // Immediate feedback UX
     const svgContainer = document.getElementById('kline-svg');
     if (svgContainer) {
         svgContainer.innerHTML = '<text x="50%" y="50%" fill="var(--text-muted)" font-size="12" text-anchor="middle">Loading...</text>';
     }
-    
+
     fetchMaxKlineData();
 }
 
@@ -1662,29 +1840,29 @@ function setupChartInteractions(svg) {
     const cyBg = document.getElementById('crosshair-y-bg');
     const cyLabel = document.getElementById('crosshair-y-label');
     const tooltip = document.getElementById('kline-tooltip');
-    
+
     function updateCrosshair(clientX, clientY) {
         if (!crosshair || !cx || !cy || !tooltip) return;
-        
+
         const rect = svg.getBoundingClientRect();
         let x = clientX - rect.left;
         let y = clientY - rect.top;
-        
+
         // 邊界防護
         if (x < klineLayout.paddingLeft || x > klineLayout.width - 55) {
             crosshair.style.display = 'none';
             tooltip.innerHTML = `<span>高:<span style="color:#fff">--</span></span><span>低:<span style="color:#fff">--</span></span>`;
             return;
         }
-        
+
         // 計算選中的 K 棒
         let index = Math.floor((x - klineLayout.paddingLeft) / klineLayout.colWidth);
         if (index < 0) index = 0;
         if (index >= klineDataCache.length) index = klineDataCache.length - 1;
-        
+
         const kData = klineDataCache[index];
         if (!kData) return;
-        
+
         const open = Number(kData[1]);
         const high = Number(kData[2]);
         const low = Number(kData[3]);
@@ -1692,10 +1870,10 @@ function setupChartInteractions(svg) {
         const vol = Number(kData[5]);
         const ts = new Date(kData[0] * 1000);
         const timeStr = `${ts.getMonth()+1}/${ts.getDate()} ${String(ts.getHours()).padStart(2,'0')}:${String(ts.getMinutes()).padStart(2,'0')}`;
-        
+
         // 顏色邏輯 (漲綠跌紅)
         const color = close >= open ? 'var(--success)' : 'var(--danger)';
-        
+
         // 更新 UI 面板
         tooltip.innerHTML = `
             <span>${timeStr}</span>
@@ -1705,10 +1883,10 @@ function setupChartInteractions(svg) {
             <span>收:<span style="color:${color}">${close}</span></span>
             <span>量:<span style="color:#fff">${vol.toFixed(2)}</span></span>
         `;
-        
+
         // 十字線 X 軸對齊 K 棒中心
         const candleX = klineLayout.paddingLeft + index * klineLayout.colWidth + (klineLayout.colWidth * 0.4);
-        
+
         // 自動鎖定到收盤價 (Snap to Close)
         const priceRange = klineLayout.maxPrice - klineLayout.minPrice;
         const yPrice = close; // 強制為收盤價
@@ -1717,42 +1895,42 @@ function setupChartInteractions(svg) {
             ratio = (klineLayout.maxPrice - yPrice) / priceRange;
         }
         y = 15 + ratio * (klineLayout.chartHeight - 15);
-        
+
         // 移動十字線與 Y 軸標籤
         crosshair.style.display = 'inline';
         cx.setAttribute('x1', candleX);
         cx.setAttribute('x2', candleX);
         cy.setAttribute('y1', y);
         cy.setAttribute('y2', y);
-        
+
         cyBg.setAttribute('y', y - 7);
         cyLabel.setAttribute('y', y + 3);
         cyLabel.textContent = yPrice.toFixed(2);
     }
-    
+
     // 綁定事件
     svg.addEventListener('mousemove', (e) => {
         updateCrosshair(e.clientX, e.clientY);
     });
-    
+
     svg.addEventListener('mouseleave', () => {
         if(crosshair) crosshair.style.display = 'none';
         if(tooltip) tooltip.innerHTML = `<span>高:<span style="color:#fff">--</span></span><span>低:<span style="color:#fff">--</span></span>`;
     });
-    
+
     // 手機觸控事件
     svg.addEventListener('touchstart', (e) => {
         e.preventDefault(); // 防止滾動
         const touch = e.touches[0];
         updateCrosshair(touch.clientX, touch.clientY);
     }, {passive: false});
-    
+
     svg.addEventListener('touchmove', (e) => {
         e.preventDefault();
         const touch = e.touches[0];
         updateCrosshair(touch.clientX, touch.clientY);
     }, {passive: false});
-    
+
     svg.addEventListener('touchend', () => {
         if(crosshair) crosshair.style.display = 'none';
         if(tooltip) tooltip.innerHTML = `<span>高:<span style="color:#fff">--</span></span><span>低:<span style="color:#fff">--</span></span>`;
@@ -1765,7 +1943,7 @@ function switchTab(tab) {
     const astBtn = document.getElementById('tab-btn-assistant');
     const debBtn = document.getElementById('tab-btn-debate');
     const inputArea = document.querySelector('.chat-input-area');
-    
+
     if (tab === 'assistant') {
         astBox.style.display = 'flex';
         debBox.style.display = 'none';
@@ -1797,6 +1975,10 @@ function sendLiveMessage() {
     appendLiveMessage(text, 'user', '我');
     input.value = '';
     
+
+    appendLiveMessage(text, 'user', '我');
+    input.value = '';
+
     simulateLiveChatResponse(text);
 }
 
@@ -1814,6 +1996,17 @@ function appendLiveMessage(text, senderType, senderName) {
         <span class="text">${text}</span>
     `;
     
+
+    if (senderType === 'ai') senderName = '🤖 ' + senderName;
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'name';
+    nameEl.textContent = senderName;
+    const textEl = document.createElement('span');
+    textEl.className = 'text';
+    textEl.textContent = text;
+    msgBlock.append(nameEl, textEl);
+
     container.appendChild(msgBlock);
     container.scrollTop = container.scrollHeight;
 }
@@ -1859,6 +2052,7 @@ function startLiveChatSimulation() {
             } else {
                 appendLiveMessage('多軍還在死撐，空軍集合，準備倒貨！📉', 'ai', '🐻 空軍總司令');
             }
+
         }
     }, Math.floor(Math.random() * 5000) + 3000); // 3 ~ 8 秒隨機發一句
 }
@@ -1873,6 +2067,7 @@ async function callRealClaudeAPI(userText) {
         setTimeout(() => {
             let aiMsg = `分析當前市場狀態... 目前呈現震盪整理，建議嚴守紀律，多看少做。`;
             
+
             if (userText.includes('市場過熱') || userText.includes('過熱')) {
                 aiMsg = `⚠️ 偵測到「過熱」訊號：目前市場情緒確實出現 FOMO 極值，建議您檢查持倉水位，避免追高風險。`;
             } else if (userText.includes('幹') || userText.includes('靠北') || userText.includes('媽的') || userText.includes('爆倉')) {
@@ -1893,12 +2088,13 @@ async function callRealClaudeAPI(userText) {
 }
 
 function triggerAIResponseIfKeyword(text) {
-    const hasAIKeyword = text.toLowerCase().includes('@ai') || 
+    const hasAIKeyword = text.toLowerCase().includes('@ai') ||
                          text.includes('分析') || text.includes('走勢') ||
                          text.includes('市場過熱') || text.includes('過熱') ||
                          text.includes('幹') || text.includes('靠北') || text.includes('媽的') || text.includes('爆倉') ||
                          text.includes('快逃') || text.includes('要跌');
     
+
     if (hasAIKeyword) {
         // 使用 async 呼叫模擬的 Claude API
         callRealClaudeAPI(text).then((aiResponse) => {
@@ -2119,3 +2315,13 @@ function typeWriterEffect(text, container, index) {
         }, 40); // 打字速度
     }
 }
+// Shared serverless community discussion.
+let communityRefreshTimer = null;
+function communityMarket() { return (currentMarket || 'btcusdt').toLowerCase(); }
+function communityDisplayName() { const el = document.getElementById('live-chat-name'); const name = (el && el.value.trim()) || localStorage.getItem('community-display-name') || ('Guest-' + Math.floor(1000 + Math.random() * 9000)); localStorage.setItem('community-display-name', name.slice(0, 30)); if (el) el.value = name.slice(0, 30); return name.slice(0, 30); }
+function appendLiveMessage(text, type, name) { const box = document.getElementById('live-chat-messages'); if (!box) return; const row = document.createElement('div'); row.className = 'live-msg ' + (type || 'other'); const who = document.createElement('span'); who.className = 'name'; who.textContent = name || 'Guest'; const body = document.createElement('span'); body.className = 'text'; body.textContent = text; row.append(who, body); box.appendChild(row); box.scrollTop = box.scrollHeight; }
+function renderCommunityMessages(messages) { const box = document.getElementById('live-chat-messages'); if (!box) return; box.replaceChildren(); for (const m of messages || []) appendLiveMessage(m.message, m.name === communityDisplayName() ? 'user' : m.name === 'AI Committee' ? 'ai' : 'other', m.name); if (!(messages || []).length) appendLiveMessage('Be the first to share. Type @AI to invite the committee.', 'ai', 'AI Committee'); }
+async function loadCommunityMessages() { const r = await apiFetch('/api/community?market=' + encodeURIComponent(communityMarket())); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'Community unavailable'); renderCommunityMessages(p.messages); }
+async function postCommunityMessage(name, message) { const r = await apiFetch('/api/community', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: communityMarket(), name, message }) }); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'Message failed'); return p.message; }
+async function toggleCommunityPanel() { const panel = document.getElementById('community-panel'); if (!panel) return; const opening = !panel.classList.contains('open'); panel.classList.toggle('open', opening); if (!opening) { clearInterval(communityRefreshTimer); return; } document.getElementById('community-market-label').textContent = communityMarket().toUpperCase(); communityDisplayName(); try { await loadCommunityMessages(); } catch (e) { appendLiveMessage(e.message, 'ai', 'System'); } clearInterval(communityRefreshTimer); communityRefreshTimer = setInterval(() => { if (panel.classList.contains('open')) loadCommunityMessages().catch(() => {}); }, 8000); }
+async function sendLiveMessage() { const input = document.getElementById('live-chat-input'); const text = input && input.value.trim(); if (!text) return; input.value = ''; try { await postCommunityMessage(communityDisplayName(), text); await loadCommunityMessages(); if (/(^|\s)@ai\b/i.test(text)) { const r = await apiFetch('/api/debate-message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: communityMarket(), message: text.replace(/@ai\b/ig, '').trim() || text }) }); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'AI unavailable'); await postCommunityMessage('AI Committee', (p.replies && p.replies.chair) || 'AI is reviewing the discussion.'); await loadCommunityMessages(); } } catch (e) { appendLiveMessage(e.message, 'ai', 'System'); } }

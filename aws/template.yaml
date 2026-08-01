@@ -1,0 +1,120 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Read-only serverless deployment for the AI Investment Committee app.
+
+Parameters:
+  AnthropicSecretArn:
+    Type: String
+    Description: ARN of a Secrets Manager secret containing {"ANTHROPIC_API_KEY":"..."}.
+  AllowedOrigin:
+    Type: String
+    Default: '*'
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 29
+    MemorySize: 512
+    Tracing: Active
+    Environment:
+      Variables:
+        ANTHROPIC_SECRET_ARN: !Ref AnthropicSecretArn
+        ALLOWED_ORIGIN: !Ref AllowedOrigin
+        CLAUDE_MODEL: claude-haiku-4-5-20251001
+        COMMUNITY_TABLE: !Ref CommunityMessages
+
+Resources:
+  PublicApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [content-type]
+        AllowOrigins: ['*']
+        MaxAge: 600
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: app.lambda_handler
+      ReservedConcurrentExecutions: 3
+      Policies:
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref AnthropicSecretArn
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommunityMessages
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref PublicApi
+            Path: /{proxy+}
+            Method: ANY
+  CommunityMessages:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: Market
+          AttributeType: S
+        - AttributeName: CreatedAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: Market
+          KeyType: HASH
+        - AttributeName: CreatedAt
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ExpiresAt
+        Enabled: true
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+  FrontendOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig: {Name: !Sub '${AWS::StackName}-frontend-oac', OriginAccessControlOriginType: s3, SigningBehavior: always, SigningProtocol: sigv4}
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: frontendS3
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt FrontendOriginAccessControl.Id
+            S3OriginConfig: {OriginAccessIdentity: ''}
+        DefaultCacheBehavior:
+          TargetOriginId: frontendS3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+        ViewerCertificate: {CloudFrontDefaultCertificate: true}
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: cloudfront.amazonaws.com}
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}'
+
+Outputs:
+  ApiUrl: {Value: !Sub 'https://${PublicApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'}
+  FrontendBucketName: {Value: !Ref FrontendBucket}
+  FrontendUrl: {Value: !Sub 'https://${FrontendDistribution.DomainName}'}
+  DistributionId: {Value: !Ref FrontendDistribution}
+  CommunityTableName: {Value: !Ref CommunityMessages}

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ai-invest-committee-v1';
+const CACHE_NAME = 'ai-invest-committee-v5';
 const urlsToCache = [
     './',
     './index.html',
