@@ -2566,10 +2566,14 @@ function renderCommunityMessages(messages) { const box = document.getElementById
 // Community discussion is a fixed presentation script, so this panel never
 // depends on API availability during a demo.
 const COMMUNITY_DEMO_MESSAGES = [
-    { name: '小安', message: 'BTC 剛靠近壓力區，我先不追價，等下一根 K 線確認。' },
-    { name: '阿哲', message: '我把部位降到原本的一半，避免短線波動影響判斷。' },
-    { name: 'AI 委員會', message: '提醒：以上是展示討論。先確認可承受風險、部位大小與退出條件；內容不構成投資建議。' },
-    { name: 'Mia', message: '我會先把交易計畫寫下來，再決定是否進場。' }
+    { name: '小安', message: 'BTC 剛靠近壓力區，我先不追價，等下一根 K 線與成交量確認。' },
+    { name: '阿哲', message: '我把部位降到原本的一半，避免短線波動影響判斷；先把可承受損失寫好。' },
+    { name: 'Mia', message: '今天群組情緒有點市場過熱，大家都在討論追高，反而讓我想先冷靜一下。' },
+    { name: 'AI 委員會', message: '自動提醒：偵測到「市場過熱／追高」討論。熱度不等於趨勢一定延續，請先檢查部位上限、流動性與退出條件。內容僅供教育研究，不構成投資建議。' },
+    { name: '阿勛', message: '我會把這次的進場理由、失效條件與觀察時間寫在筆記裡，避免臨時改計畫。' },
+    { name: '小安', message: '剛剛又有一波下跌，短線氣氛偏低迷；我不想因為恐慌就把原本的風險規則丟掉。' },
+    { name: 'AI 委員會', message: '自動提醒：偵測到「低迷／恐慌」討論。先區分公開資料、個人情緒與既定計畫；暫停觀察也是有效的風險管理。' },
+    { name: 'Mia', message: '同意。比起猜下一根 K 線，我更想確認自己是否能遵守事前設定的風險界線。' }
 ];
 const COMMUNITY_DEMO_AI_REPLIES = [
     '已記錄你的觀點。展示委員會建議先比對交易計畫與風險上限，再做下一步判斷。',
@@ -2577,6 +2581,8 @@ const COMMUNITY_DEMO_AI_REPLIES = [
     '展示提醒：不以單一訊息作為交易依據；保留觀察空間也是一種紀律。'
 ];
 let communityDemoReplyIndex = 0;
+const COMMUNITY_OVERHEAT_KEYWORDS = /市場過熱|過熱|追高|fomo|漲太快|狂漲|爆漲|all\s*time\s*high/i;
+const COMMUNITY_SLUMP_KEYWORDS = /市場低迷|低迷|恐慌|暴跌|崩跌|破底|下跌|悲觀|套牢/i;
 
 async function loadCommunityMessages() {
     renderCommunityMessages(COMMUNITY_DEMO_MESSAGES);
@@ -2608,9 +2614,14 @@ async function sendLiveMessage() {
     input.value = '';
     await postCommunityMessage(communityDisplayName(), text);
     const requestedAi = /(^|\s)@ai\b/i.test(text);
-    const response = requestedAi
-        ? COMMUNITY_DEMO_AI_REPLIES[communityDemoReplyIndex++ % COMMUNITY_DEMO_AI_REPLIES.length]
-        : 'AI 委員會已看見你的分享。若想聽展示回覆，可在訊息中輸入 @AI。';
-    await postCommunityMessage('AI 委員會', response);
+    let response = '';
+    if (COMMUNITY_OVERHEAT_KEYWORDS.test(text)) {
+        response = '自動加入討論：偵測到市場過熱或追高訊號。這是展示提醒，請先確認價格、成交量與部位上限，不要把群體情緒當作單一依據。';
+    } else if (COMMUNITY_SLUMP_KEYWORDS.test(text)) {
+        response = '自動加入討論：偵測到市場低迷或恐慌相關訊號。這是展示提醒，請先回到既定風險規則，避免在情緒高點做出衝動決策。';
+    } else if (requestedAi) {
+        response = COMMUNITY_DEMO_AI_REPLIES[communityDemoReplyIndex++ % COMMUNITY_DEMO_AI_REPLIES.length];
+    }
+    if (response) await postCommunityMessage('AI 委員會', response);
     await loadCommunityMessages();
 }
