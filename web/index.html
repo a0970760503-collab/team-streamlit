@@ -901,6 +901,15 @@
     </div>
 </div>
 
+<div id="ai-mode-modal" style="position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(0,0,0,.82); backdrop-filter:blur(5px);">
+    <div style="width:min(420px,100%); padding:22px; border:1px solid var(--primary); border-radius:16px; background:#0b0b12; box-shadow:0 0 30px rgba(0,240,255,.22);">
+        <div style="color:var(--primary); font-size:18px; font-weight:800; margin-bottom:10px;">🤖 啟動前確認：AI 模式</div>
+        <p style="margin:0 0 14px; color:#dfe7ec; font-size:13px; line-height:1.65;">請選擇本次體驗模式。展示模式使用固定劇本；AI 模式會嘗試使用後端已設定的 AI 服務，若服務或金鑰不可用，會安全降級為展示回覆。</p>
+        <div style="padding:10px; margin-bottom:14px; border-left:3px solid var(--warning); background:rgba(255,215,0,.07); color:#f2d977; font-size:11px; line-height:1.55;">不提供交易指示，也不會送出真實委託或使用錢包資產。</div>
+        <div style="display:flex; gap:10px;"><button class="learn-nav-btn" style="flex:1;" onclick="selectAiMode('demo')">🧪 展示模式</button><button class="learn-nav-btn" style="flex:1; border-color:var(--secondary); color:#d8b4fe;" onclick="selectAiMode('ai')">✨ 啟用 AI 模式</button></div>
+    </div>
+</div>
+
 <script src="config.js"></script>
 <script src="app.js?v=4" defer></script>
 <script>

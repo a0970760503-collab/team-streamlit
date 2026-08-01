@@ -12,6 +12,14 @@ const LEARNING_PROGRESS_KEY = 'max-ai-learning-progress-v1';
 const learningAnswers = { 1: 'USDT', 2: '1 天', 3: '先定風險上限' };
 let learningProgress = new Set();
 
+function selectAiMode(mode) {
+    const selected = mode === 'ai' ? 'ai' : 'demo';
+    sessionStorage.setItem('ai-experience-mode', selected);
+    document.documentElement.dataset.aiMode = selected;
+    const modal = document.getElementById('ai-mode-modal');
+    if (modal) modal.style.display = 'none';
+}
+
 // P10：資料來源可信度追蹤。任何降級（agent_report.json／mockData／盤口或 K 線 Mock）
 // 都必須標記為非 live，並在畫面亮出警示橫幅，讓觀看者知道數值不是即時報價。
 const PRICE_UNAVAILABLE = '--';
