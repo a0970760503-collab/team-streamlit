@@ -777,13 +777,6 @@
                 <div class="weight-item"><span>🌐 輿情情緒 (15%)</span><span id="score-sent-text" style="color:var(--success)">BUY (恐慌極值)</span></div>
                 <div class="weight-bar-bg"><div class="weight-bar-fill" id="score-sent-bar" style="width:15%; background:var(--success)"></div></div>
             </div>
-            <div class="order-summary" style="margin-top:18px;">
-                <div class="order-row"><span>📊 決策回測分析</span><span id="backtest-state" style="color:var(--primary)">等待載入</span></div>
-                <div class="order-row"><span>策略／基準報酬</span><span id="backtest-return">--</span></div>
-                <div class="order-row"><span>最大回撤／命中率</span><span id="backtest-risk">--</span></div>
-                <p id="backtest-note" style="margin:12px 0 0; color:var(--text-muted); font-size:11px; line-height:1.5;">回測會使用 MAX 公開歷史 K 線，僅供教育與展示。</p>
-                <button class="glow-btn" style="margin:14px 0 0; padding:10px; font-size:13px;" onclick="loadDecisionBacktest()">↻ 重新執行回測</button>
-            </div>
             <button class="glow-btn" onclick="nav('page5')">生成專屬資產配置 ❯</button>
         </div>
 
@@ -794,6 +787,13 @@
             <div class="allocation-list" id="alloc-list-p4">
                 <div class="alloc-item"><div class="dot" style="background:#333"></div>USDT (100%) - 強制空手觀望</div>
                 <div class="alloc-item" style="color:var(--text-muted);"><div class="dot" style="background:transparent; border:1px solid #333;"></div>BTC (0%) - 暫停所有交易</div>
+            </div>
+            <div class="order-summary" style="margin-top:18px;">
+                <div class="order-row"><span>📊 決策回測分析</span><span id="backtest-state" style="color:var(--primary)">等待載入</span></div>
+                <div class="order-row"><span>策略／基準報酬</span><span id="backtest-return">--</span></div>
+                <div class="order-row"><span>最大回撤／命中率</span><span id="backtest-risk">--</span></div>
+                <p id="backtest-note" style="margin:12px 0 0; color:var(--text-muted); font-size:11px; line-height:1.5;">回測會使用 MAX 公開歷史 K 線，僅供教育與展示。</p>
+                <button class="glow-btn" style="margin:14px 0 0; padding:10px; font-size:13px;" onclick="loadDecisionBacktest()">↻ 重新執行回測</button>
             </div>
             <div id="alloc-summary-p4" style="font-size:14px; color:var(--text-main); line-height:1.6; background:rgba(0,0,0,0.5); padding:16px; border-radius:8px; border-left:4px solid var(--secondary); margin-bottom:20px;">
                 💡 <b>個人化防控總結：</b><br>
