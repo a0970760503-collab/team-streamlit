@@ -562,6 +562,14 @@ async function renderToolUseStatus(toolCalls) {
     await renderChatMessage({ type: 'sys', text: `🧰 模式 B｜AI 委員會自主使用研究工具：${used}` });
 }
 
+function debateHistoryForApi() {
+    return debateHistory.slice(-8).map(item => ({
+        name: String(item.name || '委員').slice(0, 40),
+        text: String(item.text || '').slice(0, 500),
+        role: item.role === 'user' ? 'user' : 'agent'
+    })).filter(item => item.text);
+}
+
 async function startAiDebate(initialUserText = null) {
     document.getElementById('tab-btn-debate').style.display = 'block';
     switchTab('debate');
@@ -581,7 +589,7 @@ async function startAiDebate(initialUserText = null) {
     try {
         const response = await apiFetch('/api/debate-message', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ market: currentMarket, message: prompt })
+            body: JSON.stringify({ market: currentMarket, message: prompt, discussionHistory: debateHistoryForApi() })
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'AI 委員會暫時無法回應。');
@@ -651,18 +659,19 @@ function toggleDebateInput() {
 async function endAiDebate() {
     const actions = document.getElementById('decision-btn-area');
     if (actions) actions.style.display = 'none';
-    await renderChatMessage({ type: 'sys', text: '正在請主席整理本次 AI 討論的研究摘要…' });
+    await renderChatMessage({ type: 'sys', text: '正在請主席統整四位委員的共識、分歧與研究策略卡…' });
     let action = 'HOLD';
     let summary = '本次 AI 討論未能完成最後摘要，因此系統不產生交易結論。請以後續研究與風險評估為準；內容不構成投資建議。';
     try {
         const response = await apiFetch('/api/debate-message', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ market: currentMarket, message: '請以繁體中文總結本次討論的研究重點、風險與待驗證條件。不得給出個人化交易指示；請明示內容不構成投資建議。' })
+            body: JSON.stringify({ market: currentMarket, message: '請擔任主席，依據 discussion_context 中本輪四位委員內容，統整共同證據、分歧或不確定性、後續研究／風險管理重點。最後產出研究策略卡：買入觀察條件、賣出／避險觀察條件、維持觀察條件及本輪偏向；不得提供個人化下單指示，最後只用一句話提醒內容不構成投資建議。', discussionHistory: debateHistoryForApi() })
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'AI 摘要暫時不可用。');
         action = ['BUY', 'SELL', 'HOLD'].includes(String(data.final_action).toUpperCase()) ? String(data.final_action).toUpperCase() : 'HOLD';
         summary = data.summary || summary;
+        await renderToolUseStatus(data.toolCalls);
     } catch (error) {
         summary = `AI 摘要暫時不可用：${error.message}。${summary}`;
     }
@@ -692,7 +701,7 @@ async function sendDebateMsg() {
         const response = await apiFetch('/api/debate-message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ market: currentMarket, message: text })
+            body: JSON.stringify({ market: currentMarket, message: text, discussionHistory: debateHistoryForApi() })
         });
         const resData = await response.json();
 
