@@ -428,8 +428,11 @@
             <!-- 首頁 Header -->
             <div style="padding: 16px; border-bottom: 1px solid rgba(0,240,255,0.15); display:flex; justify-content:space-between; align-items:center; background:#000;">
                 <span style="color:var(--primary); font-weight:bold; font-size:16px; letter-spacing:1px; text-shadow:0 0 5px var(--primary);">📊 市場行情</span>
-                <!-- 綜合搜尋框 -->
-                <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:120px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
+                <div style="display:flex; gap: 8px; align-items:center;">
+                    <button onclick="openToxicCoach()" style="background:rgba(255,0,85,0.15); border:1px solid var(--danger); color:var(--danger); border-radius:4px; padding:4px 8px; font-size:11px; cursor:pointer; font-weight:bold; box-shadow: 0 0 5px rgba(255,0,85,0.4); transition: 0.2s;" onmouseover="this.style.boxShadow='0 0 10px rgba(255,0,85,0.8)'" onmouseout="this.style.boxShadow='0 0 5px rgba(255,0,85,0.4)'">👿 毒舌診斷</button>
+                    <!-- 綜合搜尋框 -->
+                    <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:100px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
+                </div>
             </div>
             
             <!-- 行情自選列表區 -->
@@ -744,6 +747,39 @@
     <!-- 懸浮聊天按鈕 (定位於手機框內部) -->
     <div id="floating-chat-btn" onclick="toggleChatPanel()">
         🤖
+    </div>
+    
+    <!-- 👿 毒舌 AI 投資教練 Modal (全螢幕覆蓋) -->
+    <div id="toxic-ai-modal" style="display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); z-index:9999; flex-direction:column; padding:20px; backdrop-filter:blur(5px);">
+        <!-- 頂部關閉 -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+            <span style="color:var(--danger); font-size:18px; font-weight:bold; font-family:monospace; text-shadow:0 0 10px var(--danger);">[ SYSTEM: 投資 DNA 解析 ]</span>
+            <span onclick="closeToxicCoach()" style="color:#fff; font-size:24px; cursor:pointer;">×</span>
+        </div>
+        
+        <!-- 雷達圖區塊 -->
+        <div style="width:100%; height:200px; display:flex; justify-content:center; align-items:center; position:relative; margin-bottom:20px;">
+            <svg id="dna-radar" width="200" height="200" viewBox="0 0 200 200">
+                <!-- 將由 JS 動態生成 -->
+            </svg>
+            <!-- 背景發光 -->
+            <div style="position:absolute; width:150px; height:150px; border-radius:50%; background:radial-gradient(circle, rgba(255,0,85,0.3) 0%, rgba(0,0,0,0) 70%); pointer-events:none;"></div>
+        </div>
+        
+        <!-- 打字機文字對話框 -->
+        <div style="flex:1; background:rgba(255,0,85,0.05); border:1px solid var(--danger); border-radius:8px; padding:16px; margin-bottom:20px; box-shadow:inset 0 0 15px rgba(255,0,85,0.2); position:relative; overflow-y:auto;">
+            <div style="position:absolute; top:-10px; left:16px; background:#000; padding:0 8px; color:var(--danger); font-weight:bold; font-size:12px;">👿 毒舌教練</div>
+            <div id="toxic-coach-text" style="color:#fff; font-size:14px; line-height:1.6; font-family:monospace;">
+                <!-- JS 打字機特效 -->
+            </div>
+            <span id="toxic-cursor" style="color:var(--danger); font-weight:bold; animation:blink 1s infinite;">_</span>
+        </div>
+        
+        <!-- 互動按鈕 -->
+        <div style="display:flex; flex-direction:column; gap:12px;">
+            <button onclick="document.getElementById('home-market-search').focus(); closeToxicCoach();" style="width:100%; padding:14px; background:linear-gradient(90deg, #550011, var(--danger)); color:#fff; font-weight:bold; border:none; border-radius:8px; font-size:14px; cursor:pointer; box-shadow:0 0 15px rgba(255,0,85,0.5);">🔥 我不服！去下單翻本</button>
+            <button onclick="closeToxicCoach()" style="width:100%; padding:14px; background:transparent; color:var(--primary); font-weight:bold; border:1px solid var(--primary); border-radius:8px; font-size:14px; cursor:pointer;">🤖 教練救我 (開啟 AI 網格)</button>
+        </div>
     </div>
 </div>
 

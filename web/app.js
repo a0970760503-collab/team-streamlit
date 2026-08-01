@@ -2016,3 +2016,141 @@ function joinFaction(faction) {
 
 // 啟動陣營戰隨機波動
 initFactionWar();
+
+// --- 👿 毒舌 AI 投資教練 (Toxic AI Coach) 邏輯 ---
+
+let toxicTypeTimeout = null;
+
+function openToxicCoach() {
+    const modal = document.getElementById('toxic-ai-modal');
+    modal.style.display = 'flex';
+    
+    // 生成隨機 DNA 數據
+    const traits = [
+        { label: 'FOMO 指數', val: Math.floor(Math.random() * 40) + 60 },
+        { label: '凹單毅力', val: Math.floor(Math.random() * 50) + 50 },
+        { label: '停損果斷', val: Math.floor(Math.random() * 30) },
+        { label: '韭菜純度', val: Math.floor(Math.random() * 30) + 70 },
+        { label: '合約信仰', val: Math.floor(Math.random() * 60) + 40 },
+        { label: '做多執念', val: Math.floor(Math.random() * 50) + 50 }
+    ];
+    
+    drawRadarChart(traits);
+    
+    // 毒舌語錄庫
+    const roasts = [
+        "掃描完你的交易紀錄了。老實說，我奶奶擲筊的勝率都比你高。上週在山頂全倉做多，跌了又死不肯停損。你這不是在投資，這是在做公益。",
+        "你的投資 DNA 顯示出極致的『高買低賣』天賦。別人恐懼你貪婪，別人貪婪你破產。建議直接把錢捐給流浪狗，至少還能聽見幾聲汪汪。",
+        "看著你的倉位，我的中央處理器差點過熱。你的操作邏輯簡直像是閉著眼睛按鍵盤。再這樣下去，你的存款餘額很快就會跟你的智商一樣歸零了。",
+        "驚人的韭菜純度高達 99%！你完美避開了所有賺錢的機會，精準踩中每一次暴跌。建議你把手機放下，去公園找個好位子準備睡紙箱。"
+    ];
+    
+    const randomRoast = roasts[Math.floor(Math.random() * roasts.length)];
+    
+    const textContainer = document.getElementById('toxic-coach-text');
+    textContainer.innerHTML = ''; // 清空
+    
+    if (toxicTypeTimeout) clearTimeout(toxicTypeTimeout);
+    typeWriterEffect(randomRoast, textContainer, 0);
+}
+
+function closeToxicCoach() {
+    const modal = document.getElementById('toxic-ai-modal');
+    modal.style.display = 'none';
+    if (toxicTypeTimeout) clearTimeout(toxicTypeTimeout);
+}
+
+function drawRadarChart(traits) {
+    const svg = document.getElementById('dna-radar');
+    svg.innerHTML = ''; // 清空
+    
+    const cx = 100, cy = 100, r = 70;
+    const numPoints = traits.length;
+    const angleStep = (Math.PI * 2) / numPoints;
+    
+    // 畫背景網格
+    for (let level = 1; level <= 4; level++) {
+        let gridPath = '';
+        const levelR = r * (level / 4);
+        for (let i = 0; i < numPoints; i++) {
+            const x = cx + levelR * Math.cos(i * angleStep - Math.PI/2);
+            const y = cy + levelR * Math.sin(i * angleStep - Math.PI/2);
+            gridPath += (i === 0 ? 'M' : 'L') + `${x},${y} `;
+        }
+        gridPath += 'Z';
+        
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', gridPath);
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', 'rgba(255,0,85,0.2)');
+        path.setAttribute('stroke-width', '1');
+        svg.appendChild(path);
+    }
+    
+    // 畫輻射線與標籤
+    for (let i = 0; i < numPoints; i++) {
+        const x = cx + r * Math.cos(i * angleStep - Math.PI/2);
+        const y = cy + r * Math.sin(i * angleStep - Math.PI/2);
+        
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('x1', cx);
+        line.setAttribute('y1', cy);
+        line.setAttribute('x2', x);
+        line.setAttribute('y2', y);
+        line.setAttribute('stroke', 'rgba(255,0,85,0.2)');
+        line.setAttribute('stroke-width', '1');
+        svg.appendChild(line);
+        
+        // 標籤
+        const textX = cx + (r + 18) * Math.cos(i * angleStep - Math.PI/2);
+        const textY = cy + (r + 18) * Math.sin(i * angleStep - Math.PI/2);
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', textX);
+        text.setAttribute('y', textY + 4);
+        text.setAttribute('fill', '#fff');
+        text.setAttribute('font-size', '10px');
+        text.setAttribute('text-anchor', 'middle');
+        text.textContent = traits[i].label;
+        svg.appendChild(text);
+    }
+    
+    // 畫數值多邊形
+    let dataPath = '';
+    for (let i = 0; i < numPoints; i++) {
+        const valR = r * (traits[i].val / 100);
+        const x = cx + valR * Math.cos(i * angleStep - Math.PI/2);
+        const y = cy + valR * Math.sin(i * angleStep - Math.PI/2);
+        dataPath += (i === 0 ? 'M' : 'L') + `${x},${y} `;
+    }
+    dataPath += 'Z';
+    
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', dataPath);
+    path.setAttribute('fill', 'rgba(255,0,85,0.4)');
+    path.setAttribute('stroke', 'var(--danger)');
+    path.setAttribute('stroke-width', '2');
+    path.style.filter = 'drop-shadow(0 0 5px var(--danger))';
+    
+    // 加入出場動畫
+    path.style.opacity = '0';
+    path.style.transform = 'scale(0.5)';
+    path.style.transformOrigin = 'center';
+    path.style.transition = 'all 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+    
+    svg.appendChild(path);
+    
+    // 觸發動畫
+    setTimeout(() => {
+        path.style.opacity = '1';
+        path.style.transform = 'scale(1)';
+    }, 100);
+}
+
+function typeWriterEffect(text, container, index) {
+    if (index < text.length) {
+        container.innerHTML += text.charAt(index);
+        toxicTypeTimeout = setTimeout(() => {
+            typeWriterEffect(text, container, index + 1);
+        }, 40); // 打字速度
+    }
+}
