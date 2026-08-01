@@ -157,6 +157,9 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             risk_score = 65
             personality = "波段型"
             win_rate = 68.0
+            sentiment_score = 72
+            fear_greed = 68
+            behavior_score = 80
 
         if price_available:
             price_phrase = f"當前即時報價 ${price:.2f} (24h: {change24h:+.2f}%)"
@@ -204,10 +207,10 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 print(f"Bedrock Error ({role_prompt}): {e}")
                 return {"text": f"API 呼叫失敗 ({e})", "signal": "HOLD"}
 
-        tech_res = invoke_claude("技術分析師", f"市場: {price_phrase}\nRSI指標: {rsi}\n近期均線: 穩定")
-        risk_res = invoke_claude("風控長", f"市場: {price_phrase}\n風險評分: {risk_score}/100\n波動性: 中高")
-        sent_res = invoke_claude("情緒分析師", f"市場: {price_phrase}\n社群討論熱度: 高\n恐慌貪婪指數: 68")
-        beh_res = invoke_claude("行為分析師", f"用戶性格: {personality}\n歷史勝率: {win_rate:.1f}%\n操作偏好: 中短線")
+        tech_res = invoke_claude("技術分析師", f"市場: {price_phrase}\nRSI指標: {rsi}")
+        risk_res = invoke_claude("風控長", f"市場: {price_phrase}\n風險評分: {risk_score}/100")
+        sent_res = invoke_claude("情緒分析師", f"市場: {price_phrase}\n社群討論分數: {sentiment_score}\n恐慌貪婪指數: {fear_greed}")
+        beh_res = invoke_claude("行為分析師", f"用戶性格: {personality}\n歷史勝率: {win_rate:.1f}%\n行為評分: {behavior_score}/100")
 
         debates = [
             {
