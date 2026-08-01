@@ -18,6 +18,16 @@ import hmac
 import hashlib
 import base64
 
+from dotenv import load_dotenv
+import boto3
+
+load_dotenv()
+try:
+    bedrock_client = boto3.client('bedrock-runtime', region_name=os.environ.get('AWS_DEFAULT_REGION', 'us-west-2'))
+except Exception as e:
+    print(f"Warning: Failed to initialize Bedrock client: {e}")
+    bedrock_client = None
+
 base_dir = os.path.dirname(os.path.abspath(__file__))
 web_index = os.path.join(base_dir, "web", "index.html")
 PORT = 8080
@@ -144,19 +154,60 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             print(f"Failed to read agent_report.json, falling back to mock data: {e}")
             rsi = round(45.0 + (random.random() * 20 - 10), 1)
-            signal = "BUY" if rsi < 40 else ("SELL" if rsi > 70 else "HOLD")
             risk_score = 65
-            buy_votes = random.randint(65, 75)
             personality = "波段型"
             win_rate = 68.0
-            sentiment_score = 72
-            fear_greed = 68
-            behavior_score = 80
 
         if price_available:
-            price_phrase = f"當前 SOL/TWD 即時報價 ${price:.2f} (24h: {change24h:+.2f}%)"
+            price_phrase = f"當前即時報價 ${price:.2f} (24h: {change24h:+.2f}%)"
         else:
-            price_phrase = "SOL/TWD 即時報價暫時無法取得（行情來源異常，未以任何替代數值填補）"
+            price_phrase = "即時報價暫時無法取得"
+
+        def invoke_claude(role_prompt, data_context):
+            if not getattr(sys.modules[__name__], 'bedrock_client', None):
+                return {"text": "Bedrock 客戶端尚未初始化", "signal": "HOLD"}
+            
+            prompt = f"Human: 你現在是 AI 投資委員會的「{role_prompt}」。\n請根據以下數據進行 40 字以內的極簡分析，並在最後一行獨立輸出你的決策(只能是 BUY, HOLD, 或 SELL 其中一個單字)：\n{data_context}\n\nAssistant:"
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 150,
+                "temperature": 0.5,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": prompt}]
+                    }
+                ]
+            })
+            
+            def _do_invoke():
+                response = bedrock_client.invoke_model(
+                    modelId='anthropic.claude-3-haiku-20240307-v1:0',
+                    body=body
+                )
+                response_body = json.loads(response.get('body').read())
+                return response_body.get('content')[0]['text']
+
+            try:
+                result_text = BedrockGate.invoke(_do_invoke)
+                lines = result_text.strip().split('\n')
+                decision = "HOLD"
+                for d in ["BUY", "SELL", "HOLD"]:
+                    if d in lines[-1].upper():
+                        decision = d
+                        break
+                display_text = "\n".join(lines[:-1]).strip() if len(lines) > 1 else result_text
+                if not display_text:  # Fallback if Claude only returns the decision word
+                    display_text = f"({role_prompt} 選擇了 {decision})"
+                return {"text": display_text, "signal": decision}
+            except Exception as e:
+                print(f"Bedrock Error ({role_prompt}): {e}")
+                return {"text": f"API 呼叫失敗 ({e})", "signal": "HOLD"}
+
+        tech_res = invoke_claude("技術分析師", f"市場: {price_phrase}\nRSI指標: {rsi}\n近期均線: 穩定")
+        risk_res = invoke_claude("風控長", f"市場: {price_phrase}\n風險評分: {risk_score}/100\n波動性: 中高")
+        sent_res = invoke_claude("情緒分析師", f"市場: {price_phrase}\n社群討論熱度: 高\n恐慌貪婪指數: 68")
+        beh_res = invoke_claude("行為分析師", f"用戶性格: {personality}\n歷史勝率: {win_rate:.1f}%\n操作偏好: 中短線")
 
         debates = [
             {
@@ -164,37 +215,45 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "role": "技術面",
                 "avatar": "📊",
                 "score": str(int(rsi)),
-                "signal": signal,
-                "text": f"{price_phrase}，RSI 為 {rsi}。5日與20日均線呈現穩健走勢，技術面信號為 {signal}！"
+                "signal": tech_res["signal"],
+                "text": tech_res["text"]
             },
             {
                 "agent": "Risk Agent (風控長)",
                 "role": "風控面",
                 "avatar": "🛡️",
                 "score": str(risk_score),
-                "signal": "HOLD" if risk_score > 50 else "BUY",
-                "text": f"關注歷史波動！綜合風險評分為 {risk_score}/100。建議嚴格控制倉位，不可盲目追高！"
+                "signal": risk_res["signal"],
+                "text": risk_res["text"]
             },
             {
                 "agent": "Sentiment Agent (情緒分析師)",
                 "role": "輿情面",
                 "avatar": "💬",
-                "score": str(sentiment_score),
-                "signal": "BUY" if sentiment_score > 50 else "HOLD",
-                "text": f"CoinMarketCap 恐慌與貪婪指數為 {fear_greed}。社群討論度在 Threads 與 X 上偏向正面，市場情緒偏看多。"
+                "score": "68",
+                "signal": sent_res["signal"],
+                "text": sent_res["text"]
             },
             {
                 "agent": "Behavior Agent (人格分析師)",
                 "role": "用戶行為",
                 "avatar": "👤",
-                "score": str(behavior_score),
-                "signal": "BUY" if behavior_score > 50 else "HOLD",
-                "text": f"解析帳戶歷史交易，用戶屬於「{personality}」偏好，過往在此情境進場勝率達 {win_rate:.1f}%。契合當前佈局時機。"
+                "score": "80",
+                "signal": beh_res["signal"],
+                "text": beh_res["text"]
             }
         ]
 
-        hold_votes = min(20, 100 - buy_votes)
-        sell_votes = max(0, 100 - buy_votes - hold_votes)
+        buy_votes = sum(1 for d in debates if d["signal"] == "BUY") * 25
+        sell_votes = sum(1 for d in debates if d["signal"] == "SELL") * 25
+        hold_votes = 100 - buy_votes - sell_votes
+        
+        if buy_votes > sell_votes and buy_votes > hold_votes:
+            final_decision = "BUY (建議買進)"
+        elif sell_votes > buy_votes and sell_votes > hold_votes:
+            final_decision = "SELL (建議賣出)"
+        else:
+            final_decision = "HOLD (觀望)"
 
         res = {
             "currentPrice": price if price_available else None,
@@ -206,8 +265,8 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "buyPercentage": buy_votes,
                 "holdPercentage": hold_votes,
                 "sellPercentage": sell_votes,
-                "finalDecision": "BUY (建議買進)" if buy_votes >= 60 else "HOLD (觀望)",
-                "confidenceScore": buy_votes
+                "finalDecision": final_decision,
+                "confidenceScore": max(buy_votes, sell_votes, hold_votes)
             },
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
