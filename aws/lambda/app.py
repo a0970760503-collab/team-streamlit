@@ -264,7 +264,7 @@ def demo_mode_enabled():
 def request_bedrock_json(system, prompt, max_tokens, temperature):
     try:
         response = boto3.client("bedrock-runtime").converse(
-            modelId=os.environ.get("BEDROCK_MODEL", "amazon.nova-2-lite-v1:0"),
+            modelId=os.environ.get("BEDROCK_MODEL", "us.amazon.nova-2-lite-v1:0"),
             system=[{"text": system}], messages=[{"role": "user", "content": [{"text": json.dumps(prompt, ensure_ascii=False)}]}],
             inferenceConfig={"maxTokens": max_tokens, "temperature": temperature},
         )

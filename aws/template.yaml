@@ -23,7 +23,8 @@ Globals:
       Variables:
         ANTHROPIC_SECRET_ARN: !Ref AnthropicSecretArn
         ALLOWED_ORIGIN: !Ref AllowedOrigin
-        BEDROCK_MODEL: amazon.nova-2-lite-v1:0
+        # Nova 2 Lite in us-west-2 requires the US cross-region inference ID.
+        BEDROCK_MODEL: us.amazon.nova-2-lite-v1:0
         DEMO_MODE: !Ref DemoMode
         COMMUNITY_TABLE: !Ref CommunityMessages
 
