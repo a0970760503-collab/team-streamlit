@@ -126,6 +126,22 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             except:
                 payload = {}
             self.handle_trade(payload)
+        elif parsed.path == "/api/chat_debate":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_chat_debate(payload)
+        elif parsed.path == "/api/conclude_debate":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_conclude_debate(payload)
         else:
             self.send_error(404, "Endpoint Not Found")
 
@@ -482,14 +498,14 @@ def fetch_max_ticker(market):
             "error": detail,
         }
 
-def start_server():
+def run_server():
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((HOST, PORT), CommitteeAPIHandler) as httpd:
         print(f"2/3 API Server is running indefinitely on http://localhost:{PORT}")
         httpd.serve_forever()
 
 # 背景啟動 API 伺服器
-server_thread = threading.Thread(target=start_server, daemon=True)
+server_thread = threading.Thread(target=run_server, daemon=True)
 server_thread.start()
 time.sleep(1)
 

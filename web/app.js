@@ -451,192 +451,159 @@ function generateDynamicSpeech(agent, data) {
     return '';
 }
 
-// 取得動態綁定 JSON 資料後的辯論腳本
+let debateHistory = [];
+
 function getScriptLines(data) {
-    const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
-    // 隨機交叉辯論語料
-    const techRebuts = [
-        `反駁情緒分析師：社群情緒極易反轉且為落後指標！在沒有明確的 K 線支撐或成交量確認前，盲目抄底只會接到下跌的飛刀！`,
-        `我不同意情緒分析師的觀點。情緒冰點固然存在，但在市場慣性恐慌下，盲目左側交易（抄底）是非常危險的，必須尊重技術破位！`,
-        `技術面破位已經形成，此時談『別人恐懼我貪婪』是不理智的。如果沒有成交量止跌，極度恐慌只會迎來更深的無底洞！`
-    ];
-
-    const sentRebuts = [
-        `歷史數據顯示，當恐慌貪婪指數處於 <b>${data.sentiment_agent.fear_greed}</b> 這種極端低位時，正是極具性價比的買點。別人恐懼時我們就該貪婪！`,
-        `別忘了，底都是恐慌盤砸出來的。指標來到 <b>${data.sentiment_agent.fear_greed}</b> 表明空頭動能已經衰竭，這時候不買，難道要等漲上去再追高？`,
-        `技術面往往是滯後的。在情緒達到 <b>${data.sentiment_agent.fear_greed}</b> 的極度恐慌冰點時，我們必須大膽尋求超跌反彈的右側佈局！`
-    ];
-
-    const behavRebuts = [
-        `兩位請冷靜。不管市場勝率如何，我們必須以使用者的「行為人格與心理防線」為最高指標，避免情緒性衝動交易導致不可挽回的損失。`,
-        `請注意！兩位的分析都有道理，但用戶有著激進且易衝動的交易基因。我們召開委員會的首要目的，就是防止用戶在混亂中情緒化下單。`,
-        `請冷靜，風控和行為控制才是底線。我們必須綜合量化分數，防止用戶重蹈覆轍，而不是盲目爭論多空。`
-    ];
-
-    // 技術/情緒最終表態隨機語料
-    const techFinals = [
-        `最終觀點：尊重市場趨勢，技術指標維持建議 <span style="color:${data.technical_agent.signal === 'BUY' ? 'var(--success)' : data.technical_agent.signal === 'SELL' ? 'var(--danger)' : 'var(--warning)'}; font-weight:bold;">${data.technical_agent.signal}</span>。`,
-        `最終結論：在均線未收復前，技術面堅持建議為 <span style="color:${data.technical_agent.signal === 'BUY' ? 'var(--success)' : data.technical_agent.signal === 'SELL' ? 'var(--danger)' : 'var(--warning)'}; font-weight:bold;">${data.technical_agent.signal}</span>，防禦第一。`
-    ];
-
-    const sentFinals = [
-        `最終觀點：恐慌盤已宣洩，情緒指標維持建議 <span style="color:${data.sentiment_agent.sentiment === 'BUY' ? 'var(--success)' : data.sentiment_agent.sentiment === 'SELL' ? 'var(--danger)' : 'var(--warning)'}; font-weight:bold;">${data.sentiment_agent.sentiment}</span>。`,
-        `最終結論：群眾的極度悲觀就是反轉指標，情緒面堅決維持 <span style="color:${data.sentiment_agent.sentiment === 'BUY' ? 'var(--success)' : data.sentiment_agent.sentiment === 'SELL' ? 'var(--danger)' : 'var(--warning)'}; font-weight:bold;">${data.sentiment_agent.sentiment}</span> 策略。`
-    ];
-
     return [
-        // Round 1: 初始觀點與資料來源 (優先使用後端 JSON 內的 speech 欄位，若無則呼叫前端隨機生成器)
         { 
-            agent: 'tech', 
-            icon: '📈', 
-            name: '技術分析師', 
-            color: 'var(--primary)', 
-            text: data.technical_agent.speech || generateDynamicSpeech('technical', data)
+            agent: 'tech', icon: '📈', name: '技術分析師', color: 'var(--primary)', 
+            text: data.technical_agent.speech || "技術面資料載入中..."
         },
         { 
-            agent: 'sent', 
-            icon: '🌐', 
-            name: '情緒分析師', 
-            color: 'var(--success)', 
-            text: data.sentiment_agent.speech || generateDynamicSpeech('sentiment', data)
+            agent: 'sent', icon: '🌐', name: '情緒分析師', color: 'var(--success)', 
+            text: data.sentiment_agent.speech || "情緒面資料載入中..."
         },
         { 
-            agent: 'risk', 
-            icon: '🛡️', 
-            name: '風控長', 
-            color: 'var(--warning)', 
-            text: data.investment_committee.risk_speech || generateDynamicSpeech('risk', data)
+            agent: 'risk', icon: '🛡️', name: '風控長', color: 'var(--warning)', 
+            text: data.investment_committee.risk_speech || "風控資料載入中..."
         },
         { 
-            agent: 'behav', 
-            icon: '🧠', 
-            name: '人格分析師', 
-            color: 'var(--secondary)', 
-            text: data.investment_committee.behavior_speech || generateDynamicSpeech('behavior', data)
-        },
-        
-        // Round 2: 激烈辯論
-        { type: 'sys', text: '⚡ 代理人觀點產生嚴重分歧，進入交叉辯論階段...' },
-        { 
-            agent: 'tech', 
-            icon: '📈', 
-            name: '技術分析師', 
-            color: 'var(--primary)', 
-            text: randomChoice(techRebuts)
-        },
-        { 
-            agent: 'sent', 
-            icon: '🌐', 
-            name: '情緒分析師', 
-            color: 'var(--success)', 
-            text: randomChoice(sentRebuts)
-        },
-        { 
-            agent: 'behav', 
-            icon: '🧠', 
-            name: '人格分析師', 
-            color: 'var(--secondary)', 
-            text: randomChoice(behavRebuts)
-        },
- 
-        // Round 3: 最終總結
-        { type: 'sys', text: '⏱️ 辯論結束，請各代理人進行最終表態...' },
-        { 
-            agent: 'tech', 
-            icon: '📈', 
-            name: '技術分析師', 
-            color: 'var(--primary)', 
-            text: randomChoice(techFinals)
-        },
-        { 
-            agent: 'sent', 
-            icon: '🌐', 
-            name: '情緒分析師', 
-            color: 'var(--success)', 
-            text: randomChoice(sentFinals)
-        },
-        { 
-            agent: 'risk', 
-            icon: '🛡️', 
-            name: '風控長', 
-            color: 'var(--warning)', 
-            text: (data && data.investment_committee && data.investment_committee.risk_speech_final) || `最終觀點：市場風險評估為 <b>${(data && data.investment_committee && data.investment_committee.risk_score) || 65}</b> 分，風險高企，維持建議 <span style="color:var(--warning); font-weight:bold;">${(data && data.investment_committee && data.investment_committee.final_action === 'BUY') ? '買入 (BUY)' : '觀望 (HOLD)'}</span>。` 
-        },
-        { 
-            agent: 'behav', 
-            icon: '🧠', 
-            name: '人格分析師', 
-            color: 'var(--secondary)', 
-            text: (data && data.investment_committee && data.investment_committee.behavior_speech_final) || `最終觀點：考量到行為評分 (<b>${(data && data.investment_committee && data.investment_committee.behavior_score) || 80}</b>分)，為防止 FOMO 心態失衡，維持建議 <span style="color:var(--warning); font-weight:bold;">${(data && data.investment_committee && data.investment_committee.final_action === 'BUY') ? '買入 (BUY)' : '觀望 (HOLD)'}</span>。` 
-        },
-        { 
-            agent: 'chair', 
-            icon: '👑', 
-            name: '主席 Agent', 
-            color: '#ffd700', 
-            text: (data && data.investment_committee && data.investment_committee.chair_speech) || generateDynamicSpeech('chair', data || mockData)
+            agent: 'behav', icon: '🧠', name: '人格分析師', color: 'var(--secondary)', 
+            text: data.investment_committee.behavior_speech || "行為資料載入中..."
         }
     ];
 }
 
+async function renderChatMessage(line) {
+    const chatBox = document.getElementById('chat-box');
+    const typingId = 'typing-' + Date.now() + Math.random().toString(36).substr(2, 9);
+    
+    if (line.type === 'sys') {
+        chatBox.insertAdjacentHTML('beforeend', `<div class="sys-msg"><span>${line.text}</span></div>`);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        await new Promise(r => setTimeout(r, 600));
+        return;
+    }
+
+    const typingHtml = `<div class="msg-block" id="${typingId}"><div class="avatar ${line.agent || 'tech'}">${line.icon || '⏱️'}</div><div class="msg-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>`;
+    chatBox.insertAdjacentHTML('beforeend', typingHtml);
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    const delay = Math.max(1000, (line.text || "").length * 15);
+    await new Promise(r => setTimeout(r, delay));
+
+    const typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+
+    const msgHtml = `
+    <div class="msg-block">
+        <div class="avatar ${line.agent}">${line.icon}</div>
+        <div class="msg-content">
+            <div class="msg-header"><span class="agent-name" style="color:${line.color}">${line.name}</span></div>
+            <div class="msg-bubble">${line.text}</div>
+        </div>
+    </div>`;
+    chatBox.insertAdjacentHTML('beforeend', msgHtml);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    await new Promise(r => setTimeout(r, 300));
+}
+
 async function startDebate() {
-    nav('page3'); // 辯論室 ID 從 page2 順延至 page3
+    nav('page3'); 
     if (debateFinished) {
-        document.getElementById('decision-btn-area').style.display = 'block';
+        document.getElementById('decision-btn-area').style.display = 'flex';
         return;
     }
 
     const chatBox = document.getElementById('chat-box');
     document.getElementById('decision-btn-area').style.display = 'none';
 
-    // 取得動態綁定 JSON 資料後的辯論腳本
     const scriptLines = getScriptLines(globalData || mockData);
+    debateHistory = [];
 
     for (let i = 0; i < scriptLines.length; i++) {
-        const line = scriptLines[i];
-        
-        // 打字中動畫
-        const typingId = 'typing-' + Date.now();
-        const typingHtml = `<div class="msg-block" id="${typingId}"><div class="avatar ${line.agent || 'tech'}">${line.icon || '⏱️'}</div><div class="msg-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div></div>`;
-        chatBox.insertAdjacentHTML('beforeend', typingHtml);
-        chatBox.scrollTop = chatBox.scrollHeight;
-
-        // 根據文字長度動態計算打字時間 (稍微縮短節奏讓展示更順暢)
-        const delay = line.type === 'sys' ? 600 : Math.max(1000, line.text.length * 15);
-        await new Promise(r => setTimeout(r, delay));
-
-        // 移除打字中動畫
-        const typingEl = document.getElementById(typingId);
-        if (typingEl) {
-            typingEl.remove();
-        }
-
-        // 顯示正式訊息
-        if (line.type === 'sys') {
-            chatBox.insertAdjacentHTML('beforeend', `<div class="sys-msg"><span>${line.text}</span></div>`);
-        } else {
-            const msgHtml = `
-            <div class="msg-block">
-                <div class="avatar ${line.agent}">${line.icon}</div>
-                <div class="msg-content">
-                    <div class="msg-header"><span class="agent-name" style="color:${line.color}">${line.name}</span></div>
-                    <div class="msg-bubble">${line.text}</div>
-                </div>
-            </div>`;
-            chatBox.insertAdjacentHTML('beforeend', msgHtml);
-        }
-        chatBox.scrollTop = chatBox.scrollHeight;
-        
-        // 訊息之間的短暫停頓
-        await new Promise(r => setTimeout(r, 300)); 
+        debateHistory.push({ name: scriptLines[i].name, text: scriptLines[i].text, role: "agent" });
+        await renderChatMessage(scriptLines[i]);
     }
     
     debateFinished = true;
     setTimeout(() => {
-        document.getElementById('decision-btn-area').style.display = 'block';
+        document.getElementById('decision-btn-area').style.display = 'flex';
         chatBox.scrollTop = chatBox.scrollHeight;
     }, 400);
+}
+
+function toggleDebateInput() {
+    document.getElementById('debate-action-btns').style.display = 'none';
+    document.getElementById('debate-input-area').style.display = 'flex';
+    document.getElementById('debate-input').focus();
+}
+
+async function sendDebateMsg() {
+    const input = document.getElementById('debate-input');
+    const text = input.value.trim();
+    if (!text) return;
+    
+    input.value = '';
+    document.getElementById('debate-input-area').style.display = 'none';
+    
+    // Add user message to UI and history
+    debateHistory.push({ name: "人類用戶", text: text, role: "user" });
+    await renderChatMessage({ agent: 'chair', icon: '👤', name: '人類用戶', color: '#fff', text: text });
+    
+    // Call backend to get AI responses
+    try {
+        const response = await fetch('/api/chat_debate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history: debateHistory })
+        });
+        const resData = await response.json();
+        
+        if (resData && resData.debates) {
+            for (let reply of resData.debates) {
+                debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
+                await renderChatMessage(reply);
+            }
+        }
+    } catch (e) {
+        console.error("Chat Debate Error:", e);
+        await renderChatMessage({ type: 'sys', text: `連線異常: ${e}` });
+    }
+    
+    document.getElementById('debate-action-btns').style.display = 'flex';
+}
+
+async function endDebate() {
+    document.getElementById('decision-btn-area').style.display = 'none';
+    await renderChatMessage({ type: 'sys', text: '⏱️ 辯論結束，主席正在彙整最終共識...' });
+    
+    try {
+        const response = await fetch('/api/conclude_debate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history: debateHistory })
+        });
+        const resData = await response.json();
+        
+        // Render Chair Summary in chat before navigating
+        await renderChatMessage({ agent: 'chair', icon: '👑', name: '主席 Agent', color: '#ffd700', text: resData.summary });
+        await new Promise(r => setTimeout(r, 1500));
+        
+        // Populate Page 4 UI
+        if (globalData && globalData.investment_committee) {
+            globalData.investment_committee.final_action = resData.final_action;
+        } else {
+            globalData = { investment_committee: { final_action: resData.final_action } };
+        }
+        updateUIWithData(globalData);
+        nav('page4');
+        
+    } catch (e) {
+        console.error("Conclude Debate Error:", e);
+        await renderChatMessage({ type: 'sys', text: `結案連線異常: ${e}` });
+        document.getElementById('decision-btn-area').style.display = 'flex';
+    }
 }
 
 // 動態更新投票與決策畫面 (Page 3 & Page 4 & Page 5)

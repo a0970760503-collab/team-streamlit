@@ -576,12 +576,19 @@
         </div>
 
         <!-- PAGE 3: 動態辯論會議室 -->
-        <div id="page3" class="page" style="padding: 12px 20px; position: relative;">
-            <div class="chat-container" id="chat-box">
+        <div id="page3" class="page" style="padding: 12px 20px 130px; position: relative;">
+            <div class="chat-container" id="chat-box" style="padding-bottom: 20px;">
                 <div class="sys-msg"><span>🚨 系統警報：BTC 盤中急跌 5%，跌破關鍵支撐<br>已啟動緊急辯論會議</span></div>
             </div>
-            <div class="decision-btn-container" id="decision-btn-area">
-                <button class="glow-btn" style="margin: 0; box-shadow: 0 0 20px rgba(112, 0, 255, 0.6);" onclick="nav('page4')">⚡ 結束辯論，查看最終決議</button>
+            <div class="decision-btn-container" id="decision-btn-area" style="display:flex; flex-direction:column; gap:10px;">
+                <div id="debate-input-area" style="display:none; flex-direction:column; gap:8px;">
+                    <input type="text" id="debate-input" placeholder="輸入您的觀點或提問..." style="width:100%; padding:12px; border-radius:8px; background:rgba(0,0,0,0.8); border:1px solid var(--primary); color:#fff;" onkeydown="if(event.key==='Enter') sendDebateMsg()">
+                    <button class="glow-btn" style="margin:0; padding:10px; font-size:14px;" onclick="sendDebateMsg()">發送並繼續討論</button>
+                </div>
+                <div id="debate-action-btns" style="display:flex; gap:10px; width:100%;">
+                    <button class="glow-btn" style="margin: 0; background:var(--bg-chat); border:1px solid var(--primary); color:var(--primary); box-shadow:none; flex:1;" onclick="toggleDebateInput()">🙋 加入討論</button>
+                    <button class="glow-btn" style="margin: 0; box-shadow: 0 0 20px rgba(112, 0, 255, 0.6); flex:1;" onclick="endDebate()">⚡ 結束辯論</button>
+                </div>
             </div>
         </div>
 
