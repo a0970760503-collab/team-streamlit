@@ -2468,6 +2468,72 @@ function drawRadarChart(traits) {
     }, 100);
 }
 
+// VIPER DIAGNOSIS is intentionally a self-contained scripted learning demo.
+// It never uploads or fetches a user's CSV, account information, or trade history.
+const VIPER_DEMO_SCRIPTS = [
+    '【展示劇本】市場上漲時容易放大部位、下跌時又不願設定退出條件，這是常見的 FOMO 與損失趨避循環。先寫下單筆可承受損失與退出條件，再決定是否交易。',
+    '【展示劇本】看見短線波動時，先用十分鐘冷卻期取代立刻追價。沒有事先定義的計畫，就不把臨時情緒當成投資理由。',
+    '【展示劇本】分散注意力不是分散風險。先確認部位大小、持有理由與失效條件；若任何一項說不清楚，暫停觀察也是一種紀律。'
+];
+let viperDemoIndex = 0;
+
+function renderViperDemo() {
+    const view = document.getElementById('viper-view');
+    if (!view) return;
+    const content = view.querySelector('.learning-content');
+    const header = view.querySelector('.learning-header');
+    if (header && header.dataset.viperDemoReady !== 'true') {
+        header.dataset.viperDemoReady = 'true';
+        header.innerHTML = '<span style="color:#ff3a5c;font-size:17px;font-weight:900;letter-spacing:.5px;">[ SYSTEM：投資 DNA 解析 ]</span><button class="learning-back" type="button" aria-label="關閉毒蛇診斷" onclick="showDashboardHomeView()" style="font-size:25px;line-height:1;">×</button>';
+    }
+    const label = document.getElementById('viper-mode-label');
+    if (label) label.textContent = '展示模式';
+    if (!content || content.dataset.viperDemoReady === 'true') {
+        const script = document.getElementById('viper-script');
+        if (script) script.textContent = VIPER_DEMO_SCRIPTS[viperDemoIndex];
+        return;
+    }
+    content.dataset.viperDemoReady = 'true';
+    content.innerHTML = `
+        <p style="margin:0 0 14px;color:#ff8ca0;font-size:11px;line-height:1.6;text-align:center;">展示劇本｜不讀取帳戶、交易紀錄或 CSV；內容僅用於行為金融練習。</p>
+        <article class="discipline-card" style="border-color:rgba(255,0,60,.62);text-align:center;background:radial-gradient(circle at 50% 35%,rgba(170,0,35,.20),rgba(12,8,13,.96) 68%);">
+            <h3 style="margin-bottom:4px;color:#ff5470;">模擬投資人格雷達</h3>
+            <svg viewBox="0 0 280 250" width="100%" style="max-width:300px;display:block;margin:0 auto;">
+                <defs><filter id="viper-glow"><feGaussianBlur stdDeviation="2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+                <g fill="none" stroke="rgba(255,35,77,.38)" stroke-width="1"><polygon points="140,30 230,95 196,202 84,202 50,95"/><polygon points="140,62 190,99 171,159 109,159 90,99"/><line x1="140" y1="30" x2="140" y2="202"/><line x1="50" y1="95" x2="196" y2="202"/><line x1="230" y1="95" x2="84" y2="202"/></g>
+                <polygon points="140,62 195,101 169,177 91,151 76,104" fill="rgba(239,36,68,.45)" stroke="#ff3655" stroke-width="4" filter="url(#viper-glow)"/>
+                <g fill="#f5f5f5" font-size="12" font-weight="700"><text x="113" y="18">FOMO 指數</text><text x="224" y="95">凹單毅力</text><text x="185" y="220">停損果斷</text><text x="88" y="220">自律程度</text><text x="3" y="95">合約信仰</text></g>
+            </svg>
+        </article>
+        <article class="discipline-card" style="border-color:rgba(255,0,60,.8);min-height:260px;background:linear-gradient(180deg,rgba(58,0,10,.55),rgba(8,8,12,.96));">
+            <h3 style="color:#ff5470;">🐍 毒蛇劇本</h3>
+            <p id="viper-script" style="font-size:14px;line-height:1.85;color:#f1e7e8;">${VIPER_DEMO_SCRIPTS[0]}</p>
+            <p class="knowledge-tip" style="margin-top:18px;border-color:rgba(255,215,0,.38);">本分析僅供教育與研究參考，不構成投資建議。</p>
+        </article>
+        <button class="learn-nav-btn" style="width:100%;border-color:#ff405e;color:#fff;background:linear-gradient(90deg,#7a081c,#ef3045);" type="button" onclick="nextViperScript()">🔥 我不服！下一段展示劇本</button>
+        <button class="learn-nav-btn" style="width:100%;margin-top:12px;border-color:var(--primary);color:var(--primary);" type="button" onclick="showDashboardHomeView()">🤖 返回行情，開啟 AI 委員會</button>
+    `;
+}
+
+function showViperView() {
+    activeDashboardView = 'viper';
+    if (homePollingInterval) clearInterval(homePollingInterval);
+    if (chartPollingInterval) clearInterval(chartPollingInterval);
+    const home = document.getElementById('dashboard-home-view');
+    const chart = document.getElementById('dashboard-chart-view');
+    if (home) home.style.display = 'none';
+    if (chart) chart.style.display = 'none';
+    document.getElementById('learning-view')?.classList.remove('open');
+    document.getElementById('discipline-view')?.classList.remove('open');
+    document.getElementById('viper-view')?.classList.add('open');
+    renderViperDemo();
+}
+
+function nextViperScript() {
+    viperDemoIndex = (viperDemoIndex + 1) % VIPER_DEMO_SCRIPTS.length;
+    renderViperDemo();
+}
+
 function typeWriterEffect(text, container, index) {
     if (index < text.length) {
         container.innerHTML += text.charAt(index);
