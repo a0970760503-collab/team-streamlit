@@ -230,6 +230,10 @@ def anthropic_key():
     return SECRET_CACHE
 
 
+def demo_mode_enabled():
+    return os.environ.get("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def request_analysis(market, period, technical, news):
     prompt = {"asset": market.upper(), "candle_period_minutes": period, "technical_indicators": technical, "news_last_7_days": news,
               "output_contract": {"technical_analysis": "Traditional Chinese, 120-180 words", "news_analysis": "Traditional Chinese, 100-150 words", "overall_summary": "Traditional Chinese, research only; no buy/sell instruction", "risk_level": "low, medium, or high", "watchpoints": ["Traditional Chinese item", "Traditional Chinese item", "Traditional Chinese item"]}}
@@ -333,10 +337,13 @@ def lambda_handler(event, _context):
             raw_candles = fetch_proxy({"path": "/api/v2/k", "market": market, "period": period, "limit": 120})
             candles = [[float(item[index]) for index in range(6)] for item in raw_candles if isinstance(item, list) and len(item) >= 6]
             technical, news = calculate_indicators(candles), fetch_news(market)
-            try:
-                analysis, mode = request_analysis(market, period, technical, news), "ai"
-            except RuntimeError:
+            if demo_mode_enabled():
                 analysis, mode = demo_analysis(market, period, technical, news), "demo"
+            else:
+                try:
+                    analysis, mode = request_analysis(market, period, technical, news), "ai"
+                except RuntimeError:
+                    analysis, mode = demo_analysis(market, period, technical, news), "demo"
             return json_response(200, {"market": market.upper(), "period": period, "indicators": technical, "news": news, "analysis": analysis, "mode": mode, "generatedAt": datetime.now(timezone.utc).isoformat()})
         if method == "POST" and path == "/api/debate-message":
             raw_body = event.get("body") or "{}"
@@ -346,10 +353,13 @@ def lambda_handler(event, _context):
             market = validate_market(payload.get("market", "btcusdt"))
             message = str(payload.get("message", "")).strip()
             if not (1 <= len(message) <= 700): raise ValueError("Discussion message must be 1 to 700 characters.")
-            try:
-                replies, mode = request_debate_reply(market, message), "ai"
-            except RuntimeError:
+            if demo_mode_enabled():
                 replies, mode = demo_debate_reply(market, message), "demo"
+            else:
+                try:
+                    replies, mode = request_debate_reply(market, message), "ai"
+                except RuntimeError:
+                    replies, mode = demo_debate_reply(market, message), "demo"
             # Keep the concise API used by the serverless UI and also provide the
             # debate schema expected by the latest repository interface.
             debates = [

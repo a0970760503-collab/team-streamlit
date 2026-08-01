@@ -21,6 +21,7 @@ Globals:
         ANTHROPIC_SECRET_ARN: !Ref AnthropicSecretArn
         ALLOWED_ORIGIN: !Ref AllowedOrigin
         CLAUDE_MODEL: claude-haiku-4-5-20251001
+        DEMO_MODE: 'true'
         COMMUNITY_TABLE: !Ref CommunityMessages
 
 Resources:
