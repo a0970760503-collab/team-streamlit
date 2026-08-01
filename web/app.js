@@ -20,6 +20,10 @@ function selectAiMode(mode) {
     if (modal) modal.style.display = 'none';
 }
 
+function aiModeEnabled() {
+    return sessionStorage.getItem('ai-experience-mode') === 'ai';
+}
+
 // P10：資料來源可信度追蹤。任何降級（agent_report.json／mockData／盤口或 K 線 Mock）
 // 都必須標記為非 live，並在畫面亮出警示橫幅，讓觀看者知道數值不是即時報價。
 const PRICE_UNAVAILABLE = '--';
@@ -126,7 +130,11 @@ const mockData = {
 
 // 實作資料讀取 (Fetch API)：優先連線 Java Spring Boot REST API，失敗時降級讀取 agent_report.json 或 Mock
 // AWS deployment injects the API Gateway origin through config.js; local development uses same origin.
-const apiBaseUrl = String(window.APP_CONFIG?.apiBaseUrl || '').replace(/\/$/, '');
+// config.js is normally written during deployment. The CloudFront fallback
+// keeps an already-cached config.js from disconnecting community and AI calls.
+const SERVERLESS_API_FALLBACK = 'https://mrfr4nlyfb.execute-api.us-west-2.amazonaws.com';
+const configuredApiBaseUrl = String(window.APP_CONFIG?.apiBaseUrl || '').replace(/\/$/, '');
+const apiBaseUrl = configuredApiBaseUrl || (location.hostname.endsWith('.cloudfront.net') ? SERVERLESS_API_FALLBACK : '');
 const apiFetch = (path, options) => fetch(`${apiBaseUrl}${path}`, options);
 
 async function fetchData() {
@@ -543,7 +551,44 @@ async function renderChatMessage(line) {
     await new Promise(r => setTimeout(r, 300));
 }
 
+async function startAiDebate(initialUserText = null) {
+    document.getElementById('tab-btn-debate').style.display = 'block';
+    switchTab('debate');
+    const chatBox = document.getElementById('debate-messages-container');
+    const actions = document.getElementById('decision-btn-area');
+    if (!chatBox || !actions) return;
+    chatBox.replaceChildren();
+    actions.style.display = 'none';
+    debateFinished = false;
+    debateHistory = [];
+
+    const prompt = String(initialUserText || `請以繁體中文就 ${currentTopic || currentMarket.toUpperCase()} 說明目前可觀察的市場資訊、主要不確定性與研究重點。內容僅供教育與研究參考，不構成投資建議。`).trim();
+    debateHistory.push({ name: '使用者', text: prompt, role: 'user' });
+    await renderChatMessage({ agent: 'user', icon: '🗣️', name: '使用者', color: '#fff', text: prompt });
+    try {
+        const response = await apiFetch('/api/debate-message', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ market: currentMarket, message: prompt })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'AI 委員會暫時無法回應。');
+        const replies = Array.isArray(data.debates) ? data.debates : [];
+        if (!replies.length) throw new Error('AI 回應格式不完整。');
+        for (const reply of replies) {
+            debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
+            await renderChatMessage(reply);
+        }
+    } catch (error) {
+        await renderChatMessage({ type: 'sys', text: `AI 委員會暫時無法回應：${error.message}。你仍可結束本次討論，系統會標示為未完成的研究紀錄。` });
+    } finally {
+        debateFinished = true;
+        actions.style.display = 'flex';
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+}
+
 async function startDebate(initialUserText = null) {
+    if (aiModeEnabled()) return startAiDebate(initialUserText);
     // 顯示 Tab 並且切換過去
     document.getElementById('tab-btn-debate').style.display = 'block';
     switchTab('debate');
@@ -589,6 +634,33 @@ function toggleDebateInput() {
     document.getElementById('debate-input').focus();
 }
 
+async function endAiDebate() {
+    const actions = document.getElementById('decision-btn-area');
+    if (actions) actions.style.display = 'none';
+    await renderChatMessage({ type: 'sys', text: '正在請主席整理本次 AI 討論的研究摘要…' });
+    let action = 'HOLD';
+    let summary = '本次 AI 討論未能完成最後摘要，因此系統不產生交易結論。請以後續研究與風險評估為準；內容不構成投資建議。';
+    try {
+        const response = await apiFetch('/api/debate-message', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ market: currentMarket, message: '請以繁體中文總結本次討論的研究重點、風險與待驗證條件。不得給出個人化交易指示；請明示內容不構成投資建議。' })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'AI 摘要暫時不可用。');
+        action = ['BUY', 'SELL', 'HOLD'].includes(String(data.final_action).toUpperCase()) ? String(data.final_action).toUpperCase() : 'HOLD';
+        summary = data.summary || summary;
+    } catch (error) {
+        summary = `AI 摘要暫時不可用：${error.message}。${summary}`;
+    }
+    await renderChatMessage({ agent: 'chair', icon: '👑', name: '主席委員', color: '#ffd700', text: summary });
+    if (!globalData) globalData = JSON.parse(JSON.stringify(mockData));
+    globalData.investment_committee = { ...(globalData.investment_committee || {}), final_action: action };
+    updateUIWithData(globalData);
+    debateFinished = true;
+    nav('page4');
+    loadDecisionBacktest();
+}
+
 async function sendDebateMsg() {
     const input = document.getElementById('debate-input');
     const text = input.value.trim();
@@ -625,6 +697,7 @@ async function sendDebateMsg() {
 }
 
 async function endDebate() {
+    if (aiModeEnabled()) return endAiDebate();
     document.getElementById('decision-btn-area').style.display = 'none';
     await renderChatMessage({ type: 'sys', text: '⏱️ 辯論結束，主席正在彙整最終共識...' });
 
