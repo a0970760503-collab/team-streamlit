@@ -72,10 +72,23 @@ def demo_replies(market: str, message: str) -> dict[str, str]:
     topic = " ".join(message.split())[:160]
     market = market.upper()
     return {
-        "technical": f"[Demo mode] {market}: review price trend, volume, and volatility before reaching a conclusion. This local response uses no external AI service.",
-        "risk": f"[Demo mode] Risk view on '{topic}': uncertainty is high in fast-moving markets. Use predefined limits and do not treat a demo as investment advice.",
-        "chair": f"[Demo mode] The committee recorded: '{topic}'. Demonstration conclusion: HOLD and continue observing. This is educational only, not a trading recommendation.",
+        "technical": f"【展示模式】技術分析委員：{market} 請同時觀察價格趨勢、成交量與波動幅度；本回覆使用 MAX 公開行情與本機規則，未呼叫外部 AI。",
+        "risk": f"【展示模式】風險管理委員：針對「{topic}」，快速波動市場存在高度不確定性。請先設定可承受風險與停損條件；此展示不構成投資建議。",
+        "chair": f"【展示模式】主席委員：已記錄你的觀點「{topic}」。本次展示結論為觀望（HOLD）並持續觀察，僅供教育與介面示範，並非交易建議。",
     }
+
+
+def local_report():
+    quote = market_snapshot("soltwd")
+    debates = [
+        {"agent": "技術分析委員（展示）", "role": "技術分析", "avatar": "技", "score": "50", "signal": "HOLD", "text": "【即時行情】技術面以 MAX 公開資料為準，等待趨勢與成交量同步確認。"},
+        {"agent": "風險管理委員（展示）", "role": "風險管理", "avatar": "風", "score": "50", "signal": "HOLD", "text": "【即時行情】波動與流動性可能快速變化，請維持風險控管。"},
+        {"agent": "市場情緒委員（展示）", "role": "市場情緒", "avatar": "情", "score": "50", "signal": "HOLD", "text": "【即時行情】僅顯示資料，不推導個人化交易決策。"},
+        {"agent": "行為觀察委員（展示）", "role": "行為觀察", "avatar": "行", "score": "50", "signal": "HOLD", "text": "【即時行情】避免因短期價格波動產生追高或恐慌決策。"},
+    ]
+    return {"currentPrice": quote["price"], "change24h": quote["change24h"], "dataSource": "live", "debates": debates,
+            "committee": {"buyPercentage": 33, "holdPercentage": 34, "sellPercentage": 33, "finalDecision": "HOLD", "confidenceScore": 50},
+            "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 class DemoHandler(SimpleHTTPRequestHandler):
@@ -117,6 +130,11 @@ class DemoHandler(SimpleHTTPRequestHandler):
         if route.path == "/api/community":
             market = params.get("market", ["btcusdt"])[0].lower()
             return self.json_response(HTTPStatus.OK, {"messages": COMMUNITY_MESSAGES.get(market, [])})
+        if route.path == "/api/report":
+            try:
+                return self.json_response(HTTPStatus.OK, local_report())
+            except Exception as error:
+                return self.json_response(HTTPStatus.BAD_GATEWAY, {"error": f"MAX data unavailable: {error}"})
         if route.path == "/api/market":
             try:
                 return self.json_response(HTTPStatus.OK, market_snapshot(valid_market(params.get("market", ["btcusdt"])[0])))
@@ -142,9 +160,9 @@ class DemoHandler(SimpleHTTPRequestHandler):
                     raise ValueError("Message is required.")
                 replies = demo_replies(market, message)
                 debates = [
-                    {"agent": "tech", "icon": "T", "name": "Technical Agent (Demo)", "color": "var(--primary)", "text": replies["technical"]},
-                    {"agent": "risk", "icon": "R", "name": "Risk Agent (Demo)", "color": "var(--warning)", "text": replies["risk"]},
-                    {"agent": "chair", "icon": "C", "name": "Chair Agent (Demo)", "color": "#ffd700", "text": replies["chair"]},
+                    {"agent": "tech", "icon": "技", "name": "技術分析委員（展示）", "color": "var(--primary)", "text": replies["technical"]},
+                    {"agent": "risk", "icon": "風", "name": "風險管理委員（展示）", "color": "var(--warning)", "text": replies["risk"]},
+                    {"agent": "chair", "icon": "主", "name": "主席委員（展示）", "color": "#ffd700", "text": replies["chair"]},
                 ]
                 return self.json_response(HTTPStatus.OK, {"mode": "demo", "replies": replies, "debates": debates, "summary": replies["chair"], "final_action": "HOLD", "generatedAt": datetime.now(timezone.utc).isoformat()})
             if route == "/api/community":
