@@ -234,7 +234,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             
             def _do_invoke():
                 response = bedrock_client.invoke_model(
-                    modelId='us.anthropic.claude-3-haiku-20240307-v1:0',
+                    modelId='us.anthropic.claude-sonnet-4-6',
                     body=body
                 )
                 response_body = json.loads(response.get('body').read())
@@ -551,7 +551,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             })
             def _do_invoke():
                 response = bedrock_client.invoke_model(
-                    modelId='us.anthropic.claude-3-haiku-20240307-v1:0',
+                    modelId='us.anthropic.claude-sonnet-4-6',
                     body=body
                 )
                 return json.loads(response.get('body').read()).get('content')[0]['text']
@@ -605,7 +605,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
             })
             response = bedrock_client.invoke_model(
-                modelId='us.anthropic.claude-3-haiku-20240307-v1:0',
+                modelId='us.anthropic.claude-sonnet-4-6',
                 body=body
             )
             return json.loads(response.get('body').read()).get('content')[0]['text']
@@ -638,7 +638,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         def _invoke():
             if getattr(sys.modules[__name__], 'bedrock_client', None):
                 res = bedrock_client.invoke_model(
-                    modelId='us.anthropic.claude-3-haiku-20240307-v1:0',
+                    modelId='us.anthropic.claude-sonnet-4-6',
                     body=body
                 )
                 return json.loads(res.get('body').read()).get('content')[0]['text'].strip().lower()
