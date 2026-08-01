@@ -488,25 +488,17 @@ function generateDynamicSpeech(agent, data) {
 
 let debateHistory = [];
 
-function getScriptLines(data) {
-    return [
-        {
-            agent: 'tech', icon: '📈', name: '技術分析師', color: 'var(--primary)',
-            text: data.technical_agent.speech || "技術面資料載入中..."
-        },
-        {
-            agent: 'sent', icon: '🌐', name: '情緒分析師', color: 'var(--success)',
-            text: data.sentiment_agent.speech || "情緒面資料載入中..."
-        },
-        {
-            agent: 'risk', icon: '🛡️', name: '風控長', color: 'var(--warning)',
-            text: data.investment_committee.risk_speech || "風控資料載入中..."
-        },
-        {
-            agent: 'behav', icon: '🧠', name: '人格分析師', color: 'var(--secondary)',
-            text: data.investment_committee.behavior_speech || "行為資料載入中..."
-        }
-    ];
+// 展示模式採用固定劇本；使用者仍可在下方「加入討論」提出自己的觀點。
+const DEMO_COMMITTEE_SCRIPT = [
+    { agent: 'tech', icon: '📈', name: '技術分析委員', color: 'var(--primary)', text: '【劇本展示】第一輪觀察：先確認價格趨勢、成交量與關鍵支撐／壓力區是否一致。本展示只說明研究流程，不提供買賣指令。' },
+    { agent: 'risk', icon: '🛡️', name: '風險管理委員', color: 'var(--warning)', text: '【劇本展示】風險評估：加密資產波動可能突然擴大；任何情境都應先設定可承受損失與資金上限，再討論後續策略。' },
+    { agent: 'sent', icon: '🌐', name: '市場情緒委員', color: 'var(--success)', text: '【劇本展示】情緒觀察：短期訊息容易放大追高或恐慌。委員會會把市場情緒當成參考，而不是單一決策依據。' },
+    { agent: 'behav', icon: '🧠', name: '行為觀察委員', color: 'var(--secondary)', text: '【劇本展示】行為提醒：在快速波動時先停下來檢查計畫，避免因 FOMO 或恐慌而偏離原本的風險規則。' },
+    { agent: 'chair', icon: '👑', name: '主席委員', color: '#ffd700', text: '【劇本展示】主席結論：目前採取 HOLD（觀望），等待資料與風險條件更明確。歡迎按「加入討論」提出你的觀點，委員會會以展示回覆方式記錄。' }
+];
+
+function getScriptLines() {
+    return DEMO_COMMITTEE_SCRIPT.map(line => ({ ...line }));
 }
 
 async function renderChatMessage(line) {
@@ -563,35 +555,16 @@ async function startDebate(initialUserText = null) {
     debateHistory = [];
 
     if (initialUserText) {
-        // 動態生成辯論
+        // 將使用者輸入保留為討論背景，接著播放展示劇本。
         debateHistory.push({ name: "人類用戶", text: initialUserText, role: "user" });
         await renderChatMessage({ agent: 'chair', icon: '👤', name: '人類用戶', color: '#fff', text: initialUserText });
+    }
 
-        try {
-            const response = await apiFetch('/api/debate-message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ market: currentMarket, message: initialUserText })
-            });
-            const resData = await response.json();
-
-            if (resData && resData.debates) {
-                for (let reply of resData.debates) {
-                    debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
-                    await renderChatMessage(reply);
-                }
-            }
-        } catch (e) {
-            console.error("Chat Debate Error:", e);
-            await renderChatMessage({ type: 'sys', text: `連線異常: ${e}` });
-        }
-    } else {
-        // 預設靜態生成
-        const scriptLines = getScriptLines(globalData || mockData);
-        for (let i = 0; i < scriptLines.length; i++) {
-            debateHistory.push({ name: scriptLines[i].name, text: scriptLines[i].text, role: "agent" });
-            await renderChatMessage(scriptLines[i]);
-        }
+    // 不論由按鈕或對話助理開啟，均播放固定展示劇本。
+    const scriptLines = getScriptLines();
+    for (const line of scriptLines) {
+        debateHistory.push({ name: line.name, text: line.text, role: "agent" });
+        await renderChatMessage(line);
     }
 
     debateFinished = true;
@@ -656,7 +629,7 @@ async function endDebate() {
         const resData = await response.json();
 
         // Render Chair Summary in chat before navigating
-        await renderChatMessage({ agent: 'chair', icon: '👑', name: '主席 Agent', color: '#ffd700', text: resData.summary });
+        await renderChatMessage({ agent: 'chair', icon: '👑', name: '主席委員', color: '#ffd700', text: resData.summary });
         await new Promise(r => setTimeout(r, 1500));
 
         // Populate Page 4 UI
@@ -888,11 +861,11 @@ async function sendDebateMessage() {
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || '委員會暫時無法回應。');
         const replies = payload.replies || {};
-        appendDebateMessage('tech', '📈', '技術分析師', 'var(--primary)', replies.technical || '我會把您的觀點納入技術條件的追蹤。');
-        appendDebateMessage('risk', '🛡️', '風控長', 'var(--warning)', replies.risk || '我會依您的風險界線重新檢視情境。');
-        appendDebateMessage('chair', '👑', '主席 Agent', '#ffd700', replies.chair || '已記錄您的意見，僅作研究討論，不構成交易指示。');
+        appendDebateMessage('tech', '📈', '技術分析委員', 'var(--primary)', replies.technical || '我會把您的觀點納入技術條件的追蹤。');
+        appendDebateMessage('risk', '🛡️', '風險管理委員', 'var(--warning)', replies.risk || '我會依您的風險界線重新檢視情境。');
+        appendDebateMessage('chair', '👑', '主席委員', '#ffd700', replies.chair || '已記錄您的意見，僅作研究討論，不構成交易指示。');
     } catch (error) {
-        appendDebateMessage('chair', '👑', '主席 Agent', '#ffd700', error.message || '目前無法取得回應，請稍後再試。');
+        appendDebateMessage('chair', '👑', '主席委員', '#ffd700', error.message || '目前無法取得回應，請稍後再試。');
     } finally {
         debateMessagePending = false;
         input.disabled = false;
@@ -2320,8 +2293,8 @@ let communityRefreshTimer = null;
 function communityMarket() { return (currentMarket || 'btcusdt').toLowerCase(); }
 function communityDisplayName() { const el = document.getElementById('live-chat-name'); const name = (el && el.value.trim()) || localStorage.getItem('community-display-name') || ('Guest-' + Math.floor(1000 + Math.random() * 9000)); localStorage.setItem('community-display-name', name.slice(0, 30)); if (el) el.value = name.slice(0, 30); return name.slice(0, 30); }
 function appendLiveMessage(text, type, name) { const box = document.getElementById('live-chat-messages'); if (!box) return; const row = document.createElement('div'); row.className = 'live-msg ' + (type || 'other'); const who = document.createElement('span'); who.className = 'name'; who.textContent = name || 'Guest'; const body = document.createElement('span'); body.className = 'text'; body.textContent = text; row.append(who, body); box.appendChild(row); box.scrollTop = box.scrollHeight; }
-function renderCommunityMessages(messages) { const box = document.getElementById('live-chat-messages'); if (!box) return; box.replaceChildren(); for (const m of messages || []) appendLiveMessage(m.message, m.name === communityDisplayName() ? 'user' : m.name === 'AI Committee' ? 'ai' : 'other', m.name); if (!(messages || []).length) appendLiveMessage('Be the first to share. Type @AI to invite the committee.', 'ai', 'AI Committee'); }
+function renderCommunityMessages(messages) { const box = document.getElementById('live-chat-messages'); if (!box) return; box.replaceChildren(); for (const m of messages || []) appendLiveMessage(m.message, m.name === communityDisplayName() ? 'user' : m.name === 'AI 委員會' ? 'ai' : 'other', m.name); if (!(messages || []).length) appendLiveMessage('率先分享你的觀點；輸入 @AI 可邀請委員會回覆。', 'ai', 'AI 委員會'); }
 async function loadCommunityMessages() { const r = await apiFetch('/api/community?market=' + encodeURIComponent(communityMarket())); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'Community unavailable'); renderCommunityMessages(p.messages); }
 async function postCommunityMessage(name, message) { const r = await apiFetch('/api/community', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: communityMarket(), name, message }) }); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'Message failed'); return p.message; }
 async function toggleCommunityPanel() { const panel = document.getElementById('community-panel'); if (!panel) return; const opening = !panel.classList.contains('open'); panel.classList.toggle('open', opening); if (!opening) { clearInterval(communityRefreshTimer); return; } document.getElementById('community-market-label').textContent = communityMarket().toUpperCase(); communityDisplayName(); try { await loadCommunityMessages(); } catch (e) { appendLiveMessage(e.message, 'ai', 'System'); } clearInterval(communityRefreshTimer); communityRefreshTimer = setInterval(() => { if (panel.classList.contains('open')) loadCommunityMessages().catch(() => {}); }, 8000); }
-async function sendLiveMessage() { const input = document.getElementById('live-chat-input'); const text = input && input.value.trim(); if (!text) return; input.value = ''; try { await postCommunityMessage(communityDisplayName(), text); await loadCommunityMessages(); if (/(^|\s)@ai\b/i.test(text)) { const r = await apiFetch('/api/debate-message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: communityMarket(), message: text.replace(/@ai\b/ig, '').trim() || text }) }); const p = await r.json(); if (!r.ok) throw new Error(p.error || 'AI unavailable'); await postCommunityMessage('AI Committee', (p.replies && p.replies.chair) || 'AI is reviewing the discussion.'); await loadCommunityMessages(); } } catch (e) { appendLiveMessage(e.message, 'ai', 'System'); } }
+async function sendLiveMessage() { const input = document.getElementById('live-chat-input'); const text = input && input.value.trim(); if (!text) return; input.value = ''; try { await postCommunityMessage(communityDisplayName(), text); await loadCommunityMessages(); if (/(^|\s)@ai\b/i.test(text)) { const r = await apiFetch('/api/debate-message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ market: communityMarket(), message: text.replace(/@ai\b/ig, '').trim() || text }) }); const p = await r.json(); if (!r.ok) throw new Error(p.error || '委員會暫時無法回覆'); await postCommunityMessage('AI 委員會', (p.replies && p.replies.chair) || '委員會正在整理討論內容。'); await loadCommunityMessages(); } } catch (e) { appendLiveMessage(e.message, 'ai', '系統'); } }
