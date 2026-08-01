@@ -1576,12 +1576,47 @@ function showDisciplineView() {
     document.getElementById('learning-view')?.classList.remove('open');
     document.getElementById('discipline-view')?.classList.add('open');
 }
-const viperScripts = [
-    '掃描完成（展示資料）：你在上漲時容易放大部位、下跌時又傾向延後停損。這不是人格缺陷，而是常見的 FOMO 與損失趨避偏誤。今天的練習：先寫下風險上限，再決定是否交易。',
-    '毒蛇提醒：看到一根大綠 K 不等於錯過人生。先確認交易理由、部位大小與退出條件；沒有計畫的追價，通常只是情緒在下單。',
-    '教練結論：把「我覺得會漲」改成可驗證的條件。若停損條件成立，就執行；若條件不存在，就不必勉強交易。'
-];
-let viperScriptIndex = 0;
+let viperProfile = null;
+function escapeHtml(value) { const node = document.createElement('span'); node.textContent = String(value); return node.innerHTML; }
+function viperText(id, value) { const element = document.getElementById(id); if (element) element.textContent = value; }
+function viperScorePoint(score, index, total = 4) {
+    const angle = -Math.PI / 2 + index * (Math.PI * 2 / total);
+    const radius = 78 * Math.max(0, Math.min(100, Number(score) || 0)) / 100;
+    return `${130 + Math.cos(angle) * radius},${112 + Math.sin(angle) * radius}`;
+}
+function renderViperProfile(profile, diagnosis, mode) {
+    const scores = profile.scores || {};
+    const points = ['fomo', 'switching', 'intensity', 'concentration'].map((key, index) => viperScorePoint(scores[key], index)).join(' ');
+    const polygon = document.getElementById('viper-radar-polygon');
+    if (polygon) polygon.setAttribute('points', points);
+    viperText('viper-mode-label', mode === 'ai' ? 'AI + 匯入資料' : '匯入資料');
+    viperText('viper-title', diagnosis.headline || '交易行為摘要');
+    viperText('viper-script', diagnosis.analysis || '無法產生摘要。');
+    viperText('viper-fomo', `${scores.fomo ?? '-'} 追價傾向`);
+    viperText('viper-switching', `${scores.switching ?? '-'} 反手頻率`);
+    viperText('viper-intensity', `${scores.intensity ?? '-'} 交易密度`);
+    viperText('viper-concentration', `${scores.concentration ?? '-'} 幣種集中`);
+    const observations = document.getElementById('viper-observations');
+    if (observations) observations.innerHTML = (diagnosis.observations || []).map(item => `<li>${escapeHtml(item)}</li>`).join('');
+    const disclaimer = document.getElementById('viper-disclaimer');
+    if (disclaimer) disclaimer.textContent = diagnosis.disclaimer || '本分析僅供教育與研究參考，不構成投資建議。';
+}
+async function loadViperDiagnosis() {
+    viperText('viper-script', '正在讀取去識別化 CSV 彙總資料並產生行為摘要…');
+    try {
+        const profileResponse = await fetch('user_behavior_profile.json', { cache: 'no-store' });
+        if (!profileResponse.ok) throw new Error('尚未匯入 CSV 行為摘要。');
+        viperProfile = await profileResponse.json();
+        const response = await apiFetch('/api/viper-diagnosis', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile: viperProfile }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '行為摘要服務暫時不可用。');
+        renderViperProfile(result.profile || viperProfile, result.diagnosis || {}, result.mode);
+    } catch (error) {
+        viperText('viper-mode-label', '尚未匯入');
+        viperText('viper-title', '需要匯入 CSV 彙總資料');
+        viperText('viper-script', `無法產生真實資料診斷：${error.message}。原始 CSV 不會上傳到網站；請先在本機使用匯入工具產生去識別化摘要。`);
+    }
+}
 function showViperView() {
     activeDashboardView = 'viper';
     if (homePollingInterval) clearInterval(homePollingInterval);
@@ -1591,8 +1626,9 @@ function showViperView() {
     document.getElementById('learning-view')?.classList.remove('open');
     document.getElementById('discipline-view')?.classList.remove('open');
     document.getElementById('viper-view')?.classList.add('open');
+    loadViperDiagnosis();
 }
-function nextViperScript() { viperScriptIndex = (viperScriptIndex + 1) % viperScripts.length; const el = document.getElementById('viper-script'); if (el) el.textContent = viperScripts[viperScriptIndex]; }
+function nextViperScript() { loadViperDiagnosis(); }
 function startDisciplineSimulation() {
     disciplineSimulationActive = true;
     const asset = document.getElementById('discipline-asset')?.value || 'USDT';

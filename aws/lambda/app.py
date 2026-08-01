@@ -301,6 +301,63 @@ def request_debate_reply(market, user_message):
     return {"technical": str(result.get("technical", ""))[:1200], "risk": str(result.get("risk", ""))[:1200], "chair": str(result.get("chair", ""))[:1400]}
 
 
+def normalise_behavior_profile(value):
+    """Accept only a compact, redacted CSV aggregate from the browser."""
+    if not isinstance(value, dict) or value.get("schema") != "maicoin-behavior-profile/v1":
+        raise ValueError("A valid redacted MaiCoin behaviour profile is required.")
+    trades, signals, scores = value.get("trades", {}), value.get("signals", {}), value.get("scores", {})
+    if not all(isinstance(section, dict) for section in (trades, signals, scores)):
+        raise ValueError("Behaviour profile format is invalid.")
+    bounded_score = lambda key: max(0, min(100, int(scores.get(key, 0))))
+    return {
+        "schema": "maicoin-behavior-profile/v1",
+        "periodUtc": value.get("periodUtc", {}),
+        "trades": {key: max(0, int(trades.get(key, 0))) for key in ("total", "buyCount", "sellCount", "activeDays")},
+        "signals": {
+            "buyAfterPriceRiseRate": max(0, min(1, float(signals.get("buyAfterPriceRiseRate", 0)))),
+            "oppositeSideWithin24hRate": max(0, min(1, float(signals.get("oppositeSideWithin24hRate", 0)))),
+            "tradesPerActiveDay": max(0, min(1000, float(signals.get("tradesPerActiveDay", 0)))),
+            "topAssetByTurnover": re.sub(r"[^A-Za-z0-9]", "", str(signals.get("topAssetByTurnover", "")))[:12],
+            "topAssetTurnoverShare": max(0, min(1, float(signals.get("topAssetTurnoverShare", 0)))),
+        },
+        "scores": {key: bounded_score(key) for key in ("fomo", "switching", "intensity", "concentration")},
+        "limitations": [str(item)[:220] for item in value.get("limitations", [])[:4]],
+    }
+
+
+def request_viper_diagnosis(profile):
+    prompt = {
+        "profile": profile,
+        "task": "Analyse only these aggregate trading-behaviour signals. Use Traditional Chinese. Do not insult, diagnose a person, infer protected traits, or give trading instructions.",
+        "output_contract": {
+            "headline": "Traditional Chinese, under 35 characters",
+            "analysis": "Traditional Chinese, 120-180 words; state the CSV-derived observations and their limits",
+            "observations": ["Traditional Chinese observation", "Traditional Chinese observation", "Traditional Chinese observation"],
+            "next_steps": ["Neutral education action", "Neutral education action"],
+            "disclaimer": "Traditional Chinese; this is not investment advice",
+        },
+    }
+    result = request_bedrock_json("You are a careful behavioural-finance educator. Use only supplied aggregate data. Return valid JSON only.", prompt, 900, 0.2)
+    return {
+        "headline": str(result.get("headline", "交易行為摘要"))[:80],
+        "analysis": str(result.get("analysis", ""))[:1800],
+        "observations": [str(item)[:260] for item in result.get("observations", [])[:4]],
+        "next_steps": [str(item)[:260] for item in result.get("next_steps", [])[:3]],
+        "disclaimer": str(result.get("disclaimer", "本分析僅供教育與研究參考，不構成投資建議。"))[:300],
+    }
+
+
+def profile_viper_fallback(profile):
+    signals, trades = profile["signals"], profile["trades"]
+    return {
+        "headline": "匯入紀錄行為摘要（規則式）",
+        "analysis": f"本次以匯入 CSV 的彙總資料計算：共 {trades['total']:,} 筆買賣、{trades['activeDays']:,} 個活躍交易日，平均每日 {signals['tradesPerActiveDay']:.2f} 筆。24 小時內反向交易比例為 {signals['oppositeSideWithin24hRate']:.1%}，追價買入比例為 {signals['buyAfterPriceRiseRate']:.1%}。這些是描述性訊號，不能推論績效好壞或個人特質。",
+        "observations": ["CSV 不含掛單、停損與取消原因，無法判斷停損執行力。", "幣種集中度以成交額計算，不等同目前資產配置。", "反向交易比例僅描述 24 小時內同幣別買賣切換頻率。"],
+        "next_steps": ["為每筆交易補記交易理由與預設風險上限。", "將交易計畫與實際成交分開檢視，再評估是否需要調整流程。"],
+        "disclaimer": "本分析僅供教育與研究參考，不構成投資建議。",
+    }
+
+
 def demo_debate_reply(market, user_message):
     """Safe, deterministic fallback for classroom demonstrations without an AI credit balance."""
     ticker = fetch_ticker(market)
@@ -363,6 +420,19 @@ def lambda_handler(event, _context):
                 except RuntimeError:
                     analysis, mode = demo_analysis(market, period, technical, news), "demo"
             return json_response(200, {"market": market.upper(), "period": period, "indicators": technical, "news": news, "analysis": analysis, "mode": mode, "generatedAt": datetime.now(timezone.utc).isoformat()})
+        if method == "POST" and path == "/api/viper-diagnosis":
+            raw_body = event.get("body") or "{}"
+            if event.get("isBase64Encoded"): raw_body = base64.b64decode(raw_body).decode("utf-8")
+            payload = json.loads(raw_body)
+            profile = normalise_behavior_profile(payload.get("profile"))
+            if demo_mode_enabled():
+                diagnosis, mode = profile_viper_fallback(profile), "profile"
+            else:
+                try:
+                    diagnosis, mode = request_viper_diagnosis(profile), "ai"
+                except RuntimeError:
+                    diagnosis, mode = profile_viper_fallback(profile), "profile"
+            return json_response(200, {"mode": mode, "profile": profile, "diagnosis": diagnosis, "generatedAt": datetime.now(timezone.utc).isoformat()})
         if method == "POST" and path == "/api/debate-message":
             raw_body = event.get("body") or "{}"
             if event.get("isBase64Encoded"): raw_body = base64.b64decode(raw_body).decode("utf-8")

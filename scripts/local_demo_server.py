@@ -86,6 +86,26 @@ def decision_backtest(market: str, action: str):
             "disclaimer": "教育用歷史模擬：將目前決策套用於最近 72 根 1 小時 K 線；不含手續費、滑價，且不代表未來表現。"}
 
 
+def local_viper_diagnosis(profile: dict[str, object]):
+    """Rules-based local fallback using only the redacted import summary."""
+    if profile.get("schema") != "maicoin-behavior-profile/v1":
+        raise ValueError("A redacted MaiCoin behaviour profile is required.")
+    trades = profile.get("trades", {})
+    signals = profile.get("signals", {})
+    total = int(trades.get("total", 0))
+    days = int(trades.get("activeDays", 0))
+    switching = float(signals.get("oppositeSideWithin24hRate", 0))
+    fomo = float(signals.get("buyAfterPriceRiseRate", 0))
+    density = float(signals.get("tradesPerActiveDay", 0))
+    return {
+        "headline": "匯入紀錄行為摘要（本機規則式）",
+        "analysis": f"這是根據匯入 CSV 的去識別化彙總資料：{total:,} 筆買賣、{days:,} 個活躍交易日，平均每日 {density:.2f} 筆。24 小時內反向交易比例為 {switching:.1%}，追價買入比例為 {fomo:.1%}。這些數值僅描述交易模式，不能判定投資績效或人格。",
+        "observations": ["CSV 未包含停損、掛單與取消原因，不能評估停損執行力。", "反向交易比例僅反映同幣別在 24 小時內的買賣切換。", "成交額集中度不等同目前持倉配置。"],
+        "next_steps": ["為交易補上理由與預設風險上限。", "將交易計畫和實際成交分開檢視。"],
+        "disclaimer": "本分析僅供教育與研究參考，不構成投資建議。",
+    }
+
+
 def max_proxy(params: dict[str, list[str]]):
     path = params.get("path", [""])[0]
     market = valid_market(params.get("market", ["btcusdt"])[0])
@@ -279,6 +299,11 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 item = {"id": str(len(COMMUNITY_MESSAGES.get(market, [])) + 1), "market": market.upper(), "name": name, "message": message[:500], "createdAt": datetime.now(timezone.utc).isoformat()}
                 COMMUNITY_MESSAGES.setdefault(market, []).append(item)
                 return self.json_response(HTTPStatus.CREATED, {"message": item})
+            if route == "/api/viper-diagnosis":
+                profile = payload.get("profile")
+                if not isinstance(profile, dict):
+                    raise ValueError("A redacted MaiCoin behaviour profile is required.")
+                return self.json_response(HTTPStatus.OK, {"mode": "profile", "profile": profile, "diagnosis": local_viper_diagnosis(profile), "generatedAt": datetime.now(timezone.utc).isoformat()})
             if route == "/api/ai-analysis":
                 market = str(payload.get("market", "btcusdt")).upper()
                 analysis = {"technical_analysis": f"[Demo mode] {market} local technical card.", "news_analysis": "[Demo mode] No external news is fetched in local testing.", "overall_summary": "[Demo mode] Educational simulation only.", "risk_level": "medium", "watchpoints": ["Check source data", "Watch volatility", "Use risk limits"]}
