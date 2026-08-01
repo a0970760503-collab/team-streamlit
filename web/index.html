@@ -777,6 +777,13 @@
                 <div class="weight-item"><span>🌐 輿情情緒 (15%)</span><span id="score-sent-text" style="color:var(--success)">BUY (恐慌極值)</span></div>
                 <div class="weight-bar-bg"><div class="weight-bar-fill" id="score-sent-bar" style="width:15%; background:var(--success)"></div></div>
             </div>
+            <div class="order-summary" style="margin-top:18px;">
+                <div class="order-row"><span>📊 決策回測分析</span><span id="backtest-state" style="color:var(--primary)">等待載入</span></div>
+                <div class="order-row"><span>策略／基準報酬</span><span id="backtest-return">--</span></div>
+                <div class="order-row"><span>最大回撤／命中率</span><span id="backtest-risk">--</span></div>
+                <p id="backtest-note" style="margin:12px 0 0; color:var(--text-muted); font-size:11px; line-height:1.5;">回測會使用 MAX 公開歷史 K 線，僅供教育與展示。</p>
+                <button class="glow-btn" style="margin:14px 0 0; padding:10px; font-size:13px;" onclick="loadDecisionBacktest()">↻ 重新執行回測</button>
+            </div>
             <button class="glow-btn" onclick="nav('page5')">生成專屬資產配置 ❯</button>
         </div>
 

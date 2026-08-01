@@ -640,11 +640,39 @@ async function endDebate() {
         }
         updateUIWithData(globalData);
         nav('page4');
+        loadDecisionBacktest();
 
     } catch (e) {
         console.error("Conclude Debate Error:", e);
         await renderChatMessage({ type: 'sys', text: `結案連線異常: ${e}` });
         document.getElementById('decision-btn-area').style.display = 'flex';
+    }
+}
+
+async function loadDecisionBacktest() {
+    const state = document.getElementById('backtest-state');
+    const returns = document.getElementById('backtest-return');
+    const risk = document.getElementById('backtest-risk');
+    const note = document.getElementById('backtest-note');
+    if (!state || !returns || !risk || !note) return;
+    const action = (globalData?.investment_committee?.final_action || 'HOLD').toUpperCase();
+    state.textContent = 'MAX 歷史 K 線計算中…';
+    returns.textContent = '--';
+    risk.textContent = '--';
+    try {
+        const response = await apiFetch(`/api/backtest?market=${encodeURIComponent(currentMarket || 'btcusdt')}&action=${encodeURIComponent(action)}`);
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '回測資料暫不可用');
+        const sign = value => `${Number(value) >= 0 ? '+' : ''}${Number(value).toFixed(2)}%`;
+        state.textContent = `${result.action}｜${result.candles} 根 ${result.periodMinutes} 分 K 線`;
+        state.style.color = Number(result.strategyReturnPct) >= 0 ? 'var(--success)' : 'var(--danger)';
+        returns.textContent = `${sign(result.strategyReturnPct)} ／ ${sign(result.benchmarkReturnPct)}`;
+        risk.textContent = `${Number(result.maxDrawdownPct).toFixed(2)}% ／ ${Number(result.hitRatePct).toFixed(1)}%`;
+        note.textContent = result.disclaimer || '教育用歷史模擬，不代表未來表現。';
+    } catch (error) {
+        state.textContent = '回測暫不可用';
+        state.style.color = 'var(--danger)';
+        note.textContent = error.message || '請稍後再試。';
     }
 }
 

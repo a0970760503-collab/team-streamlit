@@ -51,6 +51,41 @@ def market_snapshot(market: str):
             "volume": float(ticker.get("vol", 0) or 0), "dataSource": "live"}
 
 
+def decision_backtest(market: str, action: str):
+    market, action = valid_market(market), str(action or "HOLD").upper()
+    if action not in {"BUY", "SELL", "HOLD"}:
+        raise ValueError("Unsupported decision.")
+    raw = max_json("/api/v2/k", {"market": market, "period": "60", "limit": "72"})
+    candles = [row for row in raw if isinstance(row, list) and len(row) >= 5]
+    if len(candles) < 2:
+        raise ValueError("Not enough historical candles.")
+    closes = [float(row[4]) for row in candles]
+    entry, exit_price = closes[0], closes[-1]
+    benchmark = (exit_price / entry - 1) * 100
+    equity = [1.0]
+    changes = []
+    for previous, current in zip(closes, closes[1:]):
+        move = current / previous - 1
+        changes.append(move)
+        equity.append(equity[-1] * (1 if action == "HOLD" else (1 + move if action == "BUY" else 1 - move)))
+    strategy_return = (equity[-1] - 1) * 100
+    peak, max_drawdown = equity[0], 0.0
+    for value in equity:
+        peak = max(peak, value)
+        max_drawdown = min(max_drawdown, (value / peak - 1) * 100)
+    if action == "BUY":
+        win_rate = sum(move > 0 for move in changes) / len(changes) * 100
+    elif action == "SELL":
+        win_rate = sum(move < 0 for move in changes) / len(changes) * 100
+    else:
+        win_rate = sum(abs(move) < 0.003 for move in changes) / len(changes) * 100
+    return {"market": market.upper(), "action": action, "periodMinutes": 60, "candles": len(candles),
+            "entryPrice": entry, "exitPrice": exit_price, "strategyReturnPct": round(strategy_return, 2),
+            "benchmarkReturnPct": round(benchmark, 2), "maxDrawdownPct": round(max_drawdown, 2),
+            "hitRatePct": round(win_rate, 1), "dataSource": "live",
+            "disclaimer": "教育用歷史模擬：將目前決策套用於最近 72 根 1 小時 K 線；不含手續費、滑價，且不代表未來表現。"}
+
+
 def max_proxy(params: dict[str, list[str]]):
     path = params.get("path", [""])[0]
     market = valid_market(params.get("market", ["btcusdt"])[0])
@@ -203,6 +238,11 @@ class DemoHandler(SimpleHTTPRequestHandler):
                 return self.json_response(HTTPStatus.OK, market_snapshot(valid_market(params.get("market", ["btcusdt"])[0])))
             except Exception as error:
                 return self.json_response(HTTPStatus.OK, {"price": None, "change24h": None, "volume": None, "dataSource": "unavailable", "error": str(error)})
+        if route.path == "/api/backtest":
+            try:
+                return self.json_response(HTTPStatus.OK, decision_backtest(params.get("market", ["btcusdt"])[0], params.get("action", ["HOLD"])[0]))
+            except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
+                return self.json_response(HTTPStatus.BAD_GATEWAY, {"error": f"Backtest unavailable: {error}"})
         if route.path == "/api/proxy":
             try:
                 return self.json_response(HTTPStatus.OK, max_proxy(params))
