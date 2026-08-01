@@ -459,6 +459,7 @@
                 <span style="color:var(--primary); font-weight:bold; font-size:16px; letter-spacing:1px; text-shadow:0 0 5px var(--primary); white-space:nowrap;">📊 市場行情</span>
                 <button class="learn-nav-btn" type="button" onclick="showLearningView()">🎯 闖關</button>
                 <button class="learn-nav-btn" type="button" onclick="showDisciplineView()">🛡️ 紀律</button>
+                <button class="learn-nav-btn" type="button" onclick="showViperView()">🐍 毒蛇</button>
                 <!-- 綜合搜尋框 -->
                 <input type="text" id="home-market-search" placeholder="搜尋幣種 (例: SOL)..." style="width:120px; background:#111; border:1px solid rgba(255,255,255,0.15); color:#fff; font-size:10px; padding:4px 8px; border-radius:4px; outline:none; transition:0.2s;" onkeydown="if(event.key==='Enter') { changeMarket(this.value); showKlineChartView(); }">
             </div>
@@ -635,6 +636,16 @@
                 <article class="discipline-card"><h3>② 紀律獎金池（展示）</h3><p>模擬獎金池：<b id="discipline-pool" style="color:var(--success);">1,250 USDT</b>。實際產品須另行完成法遵、風控與資產託管設計。</p></article>
                 <article class="discipline-card"><h3>③ 協議結果</h3><p id="discipline-result">請先簽署模擬合約，再選擇「模擬守約」或「模擬違規」查看結果。</p><div style="display:flex; gap:8px; margin-top:12px;"><button class="learn-nav-btn" style="flex:1;" type="button" onclick="resolveDisciplineSimulation(true)">✓ 模擬守約</button><button class="learn-nav-btn" style="flex:1; border-color:var(--danger); color:var(--danger);" type="button" onclick="resolveDisciplineSimulation(false)">⚠ 模擬違規</button></div></article>
                 <div class="knowledge-tip">⚖️ <b>重要：</b>此頁僅供概念展示。真實質押、獎勵或沒收須在平台授權、法規評估與風險揭露完成後才能提供。</div>
+            </div>
+        </section>
+
+        <section id="viper-view" class="discipline-view" aria-label="毒蛇診斷展示">
+            <header class="learning-header"><button class="learning-back" type="button" onclick="showDashboardHomeView()">← 返回行情</button><span style="color:var(--danger); font-size:13px; font-weight:800;">🐍 VIPER DIAGNOSIS</span><span style="font-size:10px; color:var(--danger);">劇本模式</span></header>
+            <div class="learning-content">
+                <div class="learning-hero" style="border-color:rgba(255,0,60,.55); background:linear-gradient(135deg,rgba(255,0,60,.18),rgba(0,0,0,.2));"><h2 style="color:#ff5470;">[ SYSTEM：投資 DNA 解析 ]</h2><p>這是行為金融教育劇本，不會讀取個人帳戶、交易紀錄或資產資料。</p></div>
+                <article class="discipline-card" style="border-color:rgba(255,0,60,.48); text-align:center;"><h3 style="color:#ff5470;">模擬投資人格雷達</h3><svg viewBox="0 0 260 230" width="100%" style="max-width:270px;"><g fill="none" stroke="rgba(255,0,60,.35)"><polygon points="130,20 220,85 185,190 75,190 40,85"/><polygon points="130,52 191,96 168,167 92,167 69,96"/><line x1="130" y1="20" x2="130" y2="190"/><line x1="40" y1="85" x2="220" y2="85"/><line x1="40" y1="85" x2="185" y2="190"/><line x1="220" y1="85" x2="75" y2="190"/></g><polygon points="130,44 198,93 151,179 80,154 63,99" fill="rgba(255,0,60,.35)" stroke="#ff274f" stroke-width="3"/><g fill="#eee" font-size="12" font-weight="700"><text x="112" y="13">FOMO 指數</text><text x="203" y="79">回彈毅力</text><text x="185" y="207">停損果斷</text><text x="25" y="207">自律程度</text><text x="4" y="79">倉位信仰</text></g></svg></article>
+                <article class="discipline-card" style="border-color:rgba(255,0,60,.55);"><h3 style="color:#ff5470;">🐍 毒蛇劇本</h3><p id="viper-script">掃描完成（展示資料）：你在上漲時容易放大部位、下跌時又傾向延後停損。這不是人格缺陷，而是常見的 FOMO 與損失趨避偏誤。今天的練習：先寫下風險上限，再決定是否交易。</p><button class="learn-nav-btn" style="margin-top:12px; width:100%; border-color:var(--danger); color:#ff8ca0;" type="button" onclick="nextViperScript()">🐍 下一段毒蛇劇本</button></article>
+                <div style="display:flex; gap:8px;"><button class="learn-nav-btn" style="flex:1; border-color:var(--danger); color:#ff8ca0;" type="button" onclick="showDashboardHomeView()">🔥 我不服，先回行情</button><button class="learn-nav-btn" style="flex:1;" type="button" onclick="showDisciplineView()">🤖 教練救我</button></div>
             </div>
         </section>
 

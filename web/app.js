@@ -1487,10 +1487,12 @@ function showDashboardHomeView() {
     const chartView = document.getElementById('dashboard-chart-view');
     const learningView = document.getElementById('learning-view');
     const disciplineView = document.getElementById('discipline-view');
+    const viperView = document.getElementById('viper-view');
     if (homeView) homeView.style.display = 'flex';
     if (chartView) chartView.style.display = 'none';
     if (learningView) learningView.classList.remove('open');
     if (disciplineView) disciplineView.classList.remove('open');
+    if (viperView) viperView.classList.remove('open');
 
     if (homePollingInterval) clearInterval(homePollingInterval);
     if (chartPollingInterval) clearInterval(chartPollingInterval);
@@ -1566,6 +1568,23 @@ function showDisciplineView() {
     document.getElementById('learning-view')?.classList.remove('open');
     document.getElementById('discipline-view')?.classList.add('open');
 }
+const viperScripts = [
+    '掃描完成（展示資料）：你在上漲時容易放大部位、下跌時又傾向延後停損。這不是人格缺陷，而是常見的 FOMO 與損失趨避偏誤。今天的練習：先寫下風險上限，再決定是否交易。',
+    '毒蛇提醒：看到一根大綠 K 不等於錯過人生。先確認交易理由、部位大小與退出條件；沒有計畫的追價，通常只是情緒在下單。',
+    '教練結論：把「我覺得會漲」改成可驗證的條件。若停損條件成立，就執行；若條件不存在，就不必勉強交易。'
+];
+let viperScriptIndex = 0;
+function showViperView() {
+    activeDashboardView = 'viper';
+    if (homePollingInterval) clearInterval(homePollingInterval);
+    if (chartPollingInterval) clearInterval(chartPollingInterval);
+    document.getElementById('dashboard-home-view')?.style && (document.getElementById('dashboard-home-view').style.display = 'none');
+    document.getElementById('dashboard-chart-view')?.style && (document.getElementById('dashboard-chart-view').style.display = 'none');
+    document.getElementById('learning-view')?.classList.remove('open');
+    document.getElementById('discipline-view')?.classList.remove('open');
+    document.getElementById('viper-view')?.classList.add('open');
+}
+function nextViperScript() { viperScriptIndex = (viperScriptIndex + 1) % viperScripts.length; const el = document.getElementById('viper-script'); if (el) el.textContent = viperScripts[viperScriptIndex]; }
 function startDisciplineSimulation() {
     disciplineSimulationActive = true;
     const asset = document.getElementById('discipline-asset')?.value || 'USDT';
