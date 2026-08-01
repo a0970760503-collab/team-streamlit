@@ -1,0 +1,33 @@
+{
+  "schema": "maicoin-behavior-profile/v1",
+  "source": "MaiCoin CSV import (aggregated locally)",
+  "privacy": "No individual transactions, balances, deposit amounts, API keys, or account identifiers are included.",
+  "periodUtc": {
+    "from": "2025-01-01T00:13:00+00:00",
+    "to": "2025-12-31T23:49:01.506000+00:00"
+  },
+  "trades": {
+    "total": 4674,
+    "buyCount": 2357,
+    "sellCount": 2317,
+    "activeDays": 365
+  },
+  "signals": {
+    "buyAfterPriceRiseRate": 0.0289,
+    "oppositeSideWithin24hRate": 0.4357,
+    "tradesPerActiveDay": 12.81,
+    "topAssetByTurnover": "USDT",
+    "topAssetTurnoverShare": 0.1886
+  },
+  "scores": {
+    "fomo": 3,
+    "switching": 44,
+    "intensity": 85,
+    "concentration": 19
+  },
+  "limitations": [
+    "The export does not include order intent, stop-loss orders, cancellations, or the user's trading plan.",
+    "Scores are descriptive behaviour signals, not performance ratings or investment recommendations.",
+    "Price changes are compared only with the user's previous trade in the same asset, not a full market-price series."
+  ]
+}

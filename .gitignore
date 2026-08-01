@@ -1,6 +1,5 @@
 # Environment Variables
 .env
-web/user_behavior_profile.json
 .env.*
 !.env.example
 
