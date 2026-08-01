@@ -1,3 +1,4 @@
+let currentTopic = '';
 // 全域變數用以儲存從 JSON 讀取的數據與看盤資訊
 let globalData = null;
 let debateFinished = false;
@@ -197,14 +198,25 @@ async function fetchData() {
 // 監聽網頁載入，自動初始化所有資料與真實圖表
 window.addEventListener('DOMContentLoaded', () => {
     fetchData();
-    fetchNews();
     showDashboardHomeView();
 });
 
 // 實作新聞讀取 API
 async function fetchNews() {
+    const newsContainer = document.getElementById('home-news-container');
+    const phoneNewsContainer = document.getElementById('phone-news-list');
+    
+    const loadingHtml = `
+        <div style="color:var(--text-muted); text-align:center; padding:10px;">
+            <span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>
+            載入即時快訊中...
+        </div>
+    `;
+    if (newsContainer) newsContainer.innerHTML = loadingHtml;
+    if (phoneNewsContainer) phoneNewsContainer.innerHTML = loadingHtml;
+
     try {
-        const response = await fetch('/api/news');
+        const response = await fetch('/api/news?_t=' + new Date().getTime());
         if (response.ok) {
             const data = await response.json();
             const newsContainer = document.getElementById('home-news-container');
@@ -231,13 +243,23 @@ async function fetchNews() {
                 });
                 if (newsContainer) newsContainer.innerHTML = html;
                 if (phoneNewsContainer) phoneNewsContainer.innerHTML = html;
+            } else {
+                const emptyHtml = '<div style="color:var(--text-muted); font-size:10px; text-align:center; padding:10px;">目前沒有綜合快訊。</div>';
+                if (newsContainer) newsContainer.innerHTML = emptyHtml;
+                if (phoneNewsContainer) phoneNewsContainer.innerHTML = emptyHtml;
             }
+        } else {
+            throw new Error(`API responded with status ${response.status}`);
         }
     } catch (e) {
         console.warn('載入新聞快訊失敗:', e);
+        const errorHtml = '<div style="color:var(--text-muted); font-size:10px; text-align:center; padding:10px;">載入新聞失敗，請稍後再試。</div>';
+        const newsContainer = document.getElementById('home-news-container');
+        const phoneNewsContainer = document.getElementById('phone-news-list');
+        if (newsContainer) newsContainer.innerHTML = errorHtml;
+        if (phoneNewsContainer) phoneNewsContainer.innerHTML = errorHtml;
     }
 }
-
 // 前端獨立邏輯與動態拼接生成器
 function generateDynamicSpeech(agent, data) {
     const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -475,7 +497,7 @@ function getScriptLines(data) {
 }
 
 async function renderChatMessage(line) {
-    const chatBox = document.getElementById('chat-box');
+    const chatBox = document.getElementById('debate-messages-container');
     const typingId = 'typing-' + Date.now() + Math.random().toString(36).substr(2, 9);
     
     if (line.type === 'sys') {
@@ -508,28 +530,62 @@ async function renderChatMessage(line) {
     await new Promise(r => setTimeout(r, 300));
 }
 
-async function startDebate() {
-    nav('page3'); 
+async function startDebate(initialUserText = null) {
+    // 顯示 Tab 並且切換過去
+    document.getElementById('tab-btn-debate').style.display = 'block';
+    switchTab('debate');
+    
     if (debateFinished) {
         document.getElementById('decision-btn-area').style.display = 'flex';
         return;
     }
+    
+    // 設定標題，讓用戶知道當前討論的幣種
+    document.getElementById('debate-sys-msg').innerHTML = `<span>🚨 系統警報：已針對 ${currentTopic || currentMarket} 啟動緊急辯論會議</span>`;
 
-    const chatBox = document.getElementById('chat-box');
+
+    const chatBox = document.getElementById('debate-messages-container');
     document.getElementById('decision-btn-area').style.display = 'none';
 
-    const scriptLines = getScriptLines(globalData || mockData);
     debateHistory = [];
 
-    for (let i = 0; i < scriptLines.length; i++) {
-        debateHistory.push({ name: scriptLines[i].name, text: scriptLines[i].text, role: "agent" });
-        await renderChatMessage(scriptLines[i]);
+    if (initialUserText) {
+        // 動態生成辯論
+        debateHistory.push({ name: "人類用戶", text: initialUserText, role: "user" });
+        await renderChatMessage({ agent: 'chair', icon: '👤', name: '人類用戶', color: '#fff', text: initialUserText });
+        
+        try {
+            const response = await fetch('/api/chat_debate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ history: debateHistory, topic: currentTopic || currentMarket })
+            });
+            const resData = await response.json();
+            
+            if (resData && resData.debates) {
+                for (let reply of resData.debates) {
+                    debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
+                    await renderChatMessage(reply);
+                }
+            }
+        } catch (e) {
+            console.error("Chat Debate Error:", e);
+            await renderChatMessage({ type: 'sys', text: `連線異常: ${e}` });
+        }
+    } else {
+        // 預設靜態生成
+        const scriptLines = getScriptLines(globalData || mockData);
+        for (let i = 0; i < scriptLines.length; i++) {
+            debateHistory.push({ name: scriptLines[i].name, text: scriptLines[i].text, role: "agent" });
+            await renderChatMessage(scriptLines[i]);
+        }
     }
     
     debateFinished = true;
     setTimeout(() => {
         document.getElementById('decision-btn-area').style.display = 'flex';
-        chatBox.scrollTop = chatBox.scrollHeight;
+        const debateTab = document.getElementById('debate-chat-box');
+        debateTab.scrollTop = debateTab.scrollHeight;
     }, 400);
 }
 
@@ -556,7 +612,7 @@ async function sendDebateMsg() {
         const response = await fetch('/api/chat_debate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history: debateHistory })
+            body: JSON.stringify({ history: debateHistory, topic: currentTopic || currentMarket })
         });
         const resData = await response.json();
         
@@ -582,7 +638,7 @@ async function endDebate() {
         const response = await fetch('/api/conclude_debate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history: debateHistory })
+            body: JSON.stringify({ history: debateHistory, topic: currentTopic || currentMarket })
         });
         const resData = await response.json();
         
@@ -939,39 +995,41 @@ async function sendAssistantMsg() {
         chatBox.insertAdjacentHTML('beforeend', systemMsgHtml);
         chatBox.scrollTop = chatBox.scrollHeight;
 
-        // 延遲 1.5 秒後，自動切換到 Page 2 (基因讀取頁面)
+        try {
+            const res = await fetch('/api/extract_topic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: userText })
+            });
+            const data = await res.json();
+            if (data.topic) {
+                currentTopic = data.topic.toUpperCase();
+            }
+        } catch (e) {
+            console.error("Extract topic error:", e);
+        }
+
+        // 直接啟動辯論 Tab
         setTimeout(() => {
-            nav('page2');
+            startDebate(userText);
+            document.getElementById('committee-switch').classList.remove('active-neon');
         }, 1500);
 
     } else {
         // B. 按鈕未發光，智能動態對話問答 (Smart AI Financial Assistant)
-        let replyText = "";
-        const lowerInput = userText.toLowerCase();
-
-        // P10：報價不可用時明確說明，不得編造任何數字
-        const src = globalData && globalData.dataSource;
-        const priceText = formatPriceText(globalData && globalData.currentPrice, src);
-        const changeText = formatChangeText(globalData && globalData.change24h, src);
-        const quoteAvailable = priceText !== PRICE_UNAVAILABLE;
-        const quoteLine = quoteAvailable
-            ? `當前市場 SOL/TWD 即時價為 $${priceText} TWD (${changeText})`
-            : `目前即時報價暫時無法取得（資料來源異常，未以任何替代數值填補）`;
-
-        if (lowerInput.includes("你好") || lowerInput.includes("hello") || lowerInput.includes("嗨")) {
-            replyText = `您好！我是您的 24h AI 投資助理。${quoteLine}。請問有什麼我可以幫您的嗎？`;
-        } else if (lowerInput.includes("分析") || lowerInput.includes("買") || lowerInput.includes("賣") || lowerInput.includes("建議")) {
-            replyText = `收到針對「${userText}」的決策諮詢！目前技術面 RSI 與風控 MDD 水位已獲取。若需要 4 位專業 Agent 進行完整辯論並獲取主席投票決議，請開啟下方的「⚡ 召開委員會」開關後點擊送出！`;
-        } else if (lowerInput.includes("btc") || lowerInput.includes("比特幣")) {
-            replyText = quoteAvailable
-                ? `收到！我們為您監控中。如果您查詢的是當前鎖定商品，最新成交價約為 $${priceText} (${changeText})。若需執行完整分析與自動平倉，請點擊下方的「⚡ 召開委員會」。`
-                : `收到！但目前即時行情來源異常，最新成交價暫時無法取得，我不會提供未經確認的價格。連線恢復後可再查詢，或直接點擊下方的「⚡ 召開委員會」。`;
-        } else if (lowerInput.includes("eth") || lowerInput.includes("以太")) {
-            replyText = quoteAvailable
-                ? `收到！我們為您監控中。如果您查詢的是當前鎖定商品，最新成交價約為 $${priceText} (${changeText})。若需多代理人介入深入評估與風險控管，請點擊下方的「⚡ 召開委員會」。`
-                : `收到！但目前即時行情來源異常，最新成交價暫時無法取得，我不會提供未經確認的價格。連線恢復後可再查詢，或點擊下方的「⚡ 召開委員會」。`;
-        } else {
-            replyText = `已收到您的詢問：「${userText}」。AI 投資助手隨時為您監控 24h 加密市場。若您需要深入的量化風控與委員會動態投票，請點擊下方「⚡ 召開委員會」開關！`;
+        let replyText = "連線異常，無法回應。";
+        try {
+            const res = await fetch('/api/chat_assistant', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: userText, topic: currentTopic || currentMarket })
+            });
+            const data = await res.json();
+            if (data.text) {
+                replyText = data.text;
+            }
+        } catch (e) {
+            console.error("Chat assistant error:", e);
         }
 
         const assistantReplyHtml = `
@@ -1463,8 +1521,15 @@ async function updateHomeNews() {
     const homeNewsContainer = document.getElementById('home-news-container');
     if (!homeNewsContainer) return;
     
+    homeNewsContainer.innerHTML = `
+        <div style="color:var(--text-muted); text-align:center; padding:10px;">
+            <span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>
+            載入即時快訊中...
+        </div>
+    `;
+    
     try {
-        const response = await fetch('/api/news');
+        const response = await fetch('/api/news?_t=' + new Date().getTime());
         if (response.ok) {
             const data = await response.json();
             if (data.news && data.news.length > 0) {
@@ -1534,6 +1599,8 @@ function generateMockKlineData(market, period = 5) {
 async function updatePhoneNews(market) {
     const newsContainer = document.getElementById('phone-news-list');
     if (!newsContainer) return;
+    
+    newsContainer.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:10px;"><span class="typing-indicator" style="display:inline-block; margin-bottom:5px;"><span></span><span></span><span></span></span><br>載入即時快訊中...</div>';
     
     try {
         const symbol = market.toUpperCase().replace('USDT', '').replace('TWD', '');
@@ -1686,4 +1753,34 @@ function setupChartInteractions(svg) {
         if(crosshair) crosshair.style.display = 'none';
         if(tooltip) tooltip.innerHTML = `<span>高:<span style="color:#fff">--</span></span><span>低:<span style="color:#fff">--</span></span>`;
     });
+}
+
+function switchTab(tab) {
+    const astBox = document.getElementById('assistant-chat-box');
+    const debBox = document.getElementById('debate-chat-box');
+    const astBtn = document.getElementById('tab-btn-assistant');
+    const debBtn = document.getElementById('tab-btn-debate');
+    const inputArea = document.querySelector('.chat-input-area');
+    
+    if (tab === 'assistant') {
+        astBox.style.display = 'flex';
+        debBox.style.display = 'none';
+        inputArea.style.display = 'flex';
+        astBtn.style.background = 'rgba(112,0,255,0.2)';
+        astBtn.style.border = '1px solid var(--primary)';
+        astBtn.style.color = '#fff';
+        debBtn.style.background = 'transparent';
+        debBtn.style.border = '1px solid rgba(255,255,255,0.2)';
+        debBtn.style.color = 'var(--text-muted)';
+    } else {
+        astBox.style.display = 'none';
+        debBox.style.display = 'flex';
+        inputArea.style.display = 'none'; // 隱藏原本的對話框，改用辯論區的
+        debBtn.style.background = 'rgba(112,0,255,0.2)';
+        debBtn.style.border = '1px solid var(--primary)';
+        debBtn.style.color = '#fff';
+        astBtn.style.background = 'transparent';
+        astBtn.style.border = '1px solid rgba(255,255,255,0.2)';
+        astBtn.style.color = 'var(--text-muted)';
+    }
 }

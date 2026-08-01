@@ -2,8 +2,19 @@ import os
 import sys
 import time
 import subprocess
-import webbrowser
+import threading
 import socketserver
+import os
+import sys
+
+# Force UTF-8 encoding for stdout on Windows to prevent cp950 crashes
+if sys.stdout.encoding != 'utf-8':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+
+# ---------------------------------------------------------
+import socket
+import webbrowser
 import http.server
 import json
 import socket
@@ -88,6 +99,12 @@ if os.path.exists(r_script):
 
 # 2. 本地輕量 API 伺服器處理類別
 class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+        self.send_header('Pragma', 'no-cache')
+        self.send_header('Expires', '0')
+        super().end_headers()
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=os.path.join(base_dir, "web"), **kwargs)
     def do_OPTIONS(self):
@@ -126,6 +143,14 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             except:
                 payload = {}
             self.handle_trade(payload)
+        elif parsed.path == "/api/chat_assistant":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_chat_assistant(payload)
         elif parsed.path == "/api/chat_debate":
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length).decode('utf-8')
@@ -142,6 +167,14 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             except:
                 payload = {}
             self.handle_conclude_debate(payload)
+        elif parsed.path == "/api/extract_topic":
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            try:
+                payload = json.loads(post_data) if post_data else {}
+            except:
+                payload = {}
+            self.handle_extract_topic(payload)
         else:
             self.send_error(404, "Endpoint Not Found")
 
@@ -201,7 +234,7 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
             
             def _do_invoke():
                 response = bedrock_client.invoke_model(
-                    modelId='anthropic.claude-haiku-4-5-20251001-v1:0',
+                    modelId='us.anthropic.claude-sonnet-4-6',
                     body=body
                 )
                 response_body = json.loads(response.get('body').read())
@@ -449,13 +482,8 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
                 })
             self.respond_json({"status": "success", "news": items})
         except Exception as e:
-            # Fallback data if RSS fetch fails
-            fallback = [
-                {"title": "BTC 突破 96,000 美元，創下歷史新高", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-                {"title": "以太坊現貨 ETF 獲准上市", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
-                {"title": "Solana 網路升級成功，交易速度翻倍", "link": "#", "pubDate": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
-            ]
-            self.respond_json({"status": "fallback", "news": fallback, "error": str(e)})
+            # RSS fetch fails
+            self.respond_json({"status": "error", "news": [], "error": str(e)})
 
     def respond_json(self, data):
         self.send_response(200)
@@ -463,6 +491,173 @@ class CommitteeAPIHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
         self.wfile.write(json.dumps(data, ensure_ascii=False).encode('utf-8'))
+
+    def handle_chat_assistant(self, payload):
+        user_text = payload.get("text", "")
+        # 取得熱門幣種即時價格
+        prices_info = ""
+        try:
+            btc = fetch_max_ticker("btctwd")
+            eth = fetch_max_ticker("ethtwd")
+            sol = fetch_max_ticker("soltwd")
+            prices_info = f"BTC: ${btc.get('price', 'N/A')}, ETH: ${eth.get('price', 'N/A')}, SOL: ${sol.get('price', 'N/A')} (TWD)"
+        except Exception as e:
+            prices_info = "暫時無法取得最新報價"
+
+        topic = payload.get("topic", "未指定幣種")
+        prompt = f"Human: 你是一位專業的 AI 投資助理。目前畫面停留在【{topic}】。用戶提問：「{user_text}」。請用大約 30~50 字內簡短回答，若用戶詢問價格或行情，請參考以下最新市場即時價格資料：\n{prices_info}\n\nAssistant:"
+        
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 150,
+            "temperature": 0.5,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        })
+        
+        def _invoke():
+            response = bedrock_client.invoke_model(
+                modelId='us.anthropic.claude-sonnet-4-6',
+                body=body
+            )
+            return json.loads(response.get('body').read()).get('content')[0]['text']
+            
+        try:
+            res_text = BedrockGate.invoke(_invoke)
+            self.respond_json({"text": res_text.strip()})
+        except Exception as e:
+            print(f"Chat Assistant Error: {e}")
+            self.respond_json({"text": f"連線異常，無法回應。({str(e)})"})
+
+    def handle_chat_debate(self, payload):
+        history = payload.get("history", [])
+        
+        history_str = ""
+        for msg in history:
+            name = msg.get("name", "Unknown")
+            text = msg.get("text", "")
+            history_str += f"[{name}]: {text}\n"
+
+        def _invoke_single_agent(role_name, context):
+            if not getattr(sys.modules[__name__], 'bedrock_client', None):
+                return {"text": "Bedrock 未初始化"}
+            
+            topic = payload.get("topic", "目前鎖定的加密貨幣")
+            prompt = f"Human: 你現在是針對【{topic}】進行辯論的 AI 投資委員會「{role_name}」。\n以下是目前的辯論歷史紀錄：\n{history_str}\n請根據你的專業（{context}），針對最後一位人類使用者的發言進行反駁或贊同，提出你的觀點。回覆請簡短有力（40字內）。\n\nAssistant:"
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 150,
+                "temperature": 0.7,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            })
+            def _do_invoke():
+                response = bedrock_client.invoke_model(
+                    modelId='us.anthropic.claude-sonnet-4-6',
+                    body=body
+                )
+                return json.loads(response.get('body').read()).get('content')[0]['text']
+            
+            try:
+                res = BedrockGate.invoke(_do_invoke)
+                return {"text": res.strip()}
+            except Exception as e:
+                print(f"Bedrock Chat Error ({role_name}): {e}")
+                return {"text": f"無法回應 ({e})"}
+
+        agents = [
+            {"agent": "tech", "name": "技術分析師", "icon": "📈", "color": "var(--primary)", "context": "技術指標與線圖"},
+            {"agent": "risk", "name": "風控長", "icon": "🛡️", "color": "var(--warning)", "context": "風險評估與保本"},
+            {"agent": "sent", "name": "情緒分析師", "icon": "🌐", "color": "var(--success)", "context": "市場貪婪恐慌情緒"},
+            {"agent": "behav", "name": "人格分析師", "icon": "🧠", "color": "var(--secondary)", "context": "投資人心理與紀律"}
+        ]
+        
+        responses = []
+        for ag in agents:
+            reply = _invoke_single_agent(ag["name"], ag["context"])
+            responses.append({
+                "agent": ag["agent"],
+                "name": ag["name"],
+                "icon": ag["icon"],
+                "color": ag["color"],
+                "text": reply["text"]
+            })
+            
+        self.respond_json({"debates": responses})
+
+    def handle_conclude_debate(self, payload):
+        history = payload.get("history", [])
+        
+        history_str = ""
+        for msg in history:
+            name = msg.get("name", "Unknown")
+            text = msg.get("text", "")
+            history_str += f"[{name}]: {text}\n"
+            
+        def _invoke_chair():
+            if not getattr(sys.modules[__name__], 'bedrock_client', None):
+                return '{"final_action": "HOLD", "summary": "Bedrock API 未連接"}'
+                
+            topic = payload.get("topic", "目前鎖定的加密貨幣")
+            prompt = f"Human: 你現在是 AI 投資委員會的「主席 Agent」。你們剛才針對【{topic}】進行了辯論。\n以下是剛剛的所有辯論紀錄：\n{history_str}\n請你總結所有代理人與人類的意見，進行最終決議。\n**警告：絕對禁止自行捏造（Hallucinate）任何未在上述對話中出現的具體數字、百分比或評分（例如：技術得分 43、風險 10 分等）。請嚴格依據對話內容進行純邏輯總結。**\n必須以嚴格的 JSON 格式輸出（不要有任何 markdown 標籤或多餘文字），格式如下：\n{{\"summary\": \"你的綜合點評(50字內)\", \"final_action\": \"BUY\" 或 \"SELL\" 或 \"HOLD\"}}\n\nAssistant:"
+            body = json.dumps({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 200,
+                "temperature": 0.5,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            })
+            response = bedrock_client.invoke_model(
+                modelId='us.anthropic.claude-sonnet-4-6',
+                body=body
+            )
+            return json.loads(response.get('body').read()).get('content')[0]['text']
+            
+        try:
+            result = BedrockGate.invoke(_invoke_chair)
+            clean_result = result.replace('```json', '').replace('```', '').strip()
+            data = json.loads(clean_result)
+        except Exception as e:
+            print(f"Chair Parsing Error: {e}\nRaw output: {result if 'result' in locals() else 'None'}")
+            data = {"final_action": "HOLD", "summary": "API 或 JSON 解析失敗，強制觀望。"}
+            
+        self.respond_json(data)
+
+    def handle_extract_topic(self, payload):
+        user_text = payload.get("text", "")
+        if not user_text:
+            self.respond_json({"topic": "btcusdt"})
+            return
+            
+        prompt = f"Human: 你是一個虛擬貨幣實體識別助理。使用者輸入了一段文字：「{user_text}」。請判斷使用者正在討論哪一個加密貨幣。請直接回傳該貨幣對 USDT 的交易對代碼（例如：btcusdt, ethusdt, solusdt, dogeusdt）。如果無法判斷，請直接回傳 'btcusdt'。請勿輸出任何其他文字或標點符號，只能輸出代碼本身。\n\nAssistant:"
+        
+        body = json.dumps({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 50,
+            "temperature": 0.0,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+        })
+        
+        def _invoke():
+            if getattr(sys.modules[__name__], 'bedrock_client', None):
+                res = bedrock_client.invoke_model(
+                    modelId='us.anthropic.claude-sonnet-4-6',
+                    body=body
+                )
+                return json.loads(res.get('body').read()).get('content')[0]['text'].strip().lower()
+            return "btcusdt"
+            
+        try:
+            topic = BedrockGate.invoke(_invoke)
+            # Basic sanitization
+            topic = topic.replace(" ", "").replace("\n", "").replace("`", "")
+            if "doge" in topic: topic = "dogeusdt"
+            elif "sol" in topic: topic = "solusdt"
+            elif "eth" in topic: topic = "ethusdt"
+            elif "btc" in topic: topic = "btcusdt"
+            else: topic = "btcusdt"
+            
+            self.respond_json({"topic": topic})
+        except Exception as e:
+            print(f"Extract Topic Error: {e}")
+            self.respond_json({"topic": "btcusdt"})
 
 def fetch_max_ticker(market):
     """向 MAX 取得即時報價。
@@ -498,9 +693,11 @@ def fetch_max_ticker(market):
             "error": detail,
         }
 
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    allow_reuse_address = True
+
 def run_server():
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer((HOST, PORT), CommitteeAPIHandler) as httpd:
+    with ThreadedTCPServer((HOST, PORT), CommitteeAPIHandler) as httpd:
         print(f"2/3 API Server is running indefinitely on http://localhost:{PORT}")
         httpd.serve_forever()
 
