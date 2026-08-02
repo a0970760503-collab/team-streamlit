@@ -2605,6 +2605,23 @@ const COMMUNITY_DEMO_AI_REPLIES = [
     '展示提醒：不以單一訊息作為交易依據；保留觀察空間也是一種紀律。'
 ];
 let communityDemoReplyIndex = 0;
+const COMMUNITY_AUTO_FEED = [
+    { name: '小安', message: '觀察下一根 K 線與成交量，兩者未同步前不急著下結論。' },
+    { name: '阿哲', message: '短線波動加大時，我會先回看原本設定的風險上限。' },
+    { name: 'Mia', message: '社群討論變熱不代表趨勢成立，還是要看價格是否有量能支持。' },
+    { name: 'AI 委員會', message: '提醒：市場訊息增加時，先分開「已驗證資料」與「個人感受」。' },
+    { name: '阿勛', message: '我先記錄失效條件，避免價格波動時臨時改變原本計畫。' },
+];
+let communityAutoFeedIndex = 0;
+
+function addCommunityAutoMessage() {
+    const template = COMMUNITY_AUTO_FEED[communityAutoFeedIndex++ % COMMUNITY_AUTO_FEED.length];
+    const timestamp = new Date().toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+    COMMUNITY_DEMO_MESSAGES.push({ name: template.name, message: `[${timestamp}] ${template.message}` });
+    if (COMMUNITY_DEMO_MESSAGES.length > 24) COMMUNITY_DEMO_MESSAGES.splice(0, COMMUNITY_DEMO_MESSAGES.length - 24);
+    renderCommunityMessages(COMMUNITY_DEMO_MESSAGES);
+}
+
 const COMMUNITY_OVERHEAT_KEYWORDS = /市場過熱|過熱|追高|fomo|漲太快|狂漲|爆漲|all\s*time\s*high/i;
 const COMMUNITY_SLUMP_KEYWORDS = /市場低迷|低迷|恐慌|暴跌|崩跌|破底|下跌|悲觀|套牢/i;
 
@@ -2629,6 +2646,7 @@ async function toggleCommunityPanel() {
     if (label) label.textContent = `${communityMarket().toUpperCase()} · 展示劇本`;
     communityDisplayName();
     await loadCommunityMessages();
+    communityRefreshTimer = setInterval(addCommunityAutoMessage, 10000);
 }
 
 async function sendLiveMessage() {
