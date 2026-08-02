@@ -1158,14 +1158,14 @@ async function sendAssistantMsg() {
         // B. 按鈕未發光，智能動態對話問答 (Smart AI Financial Assistant)
         let replyText = "連線異常，無法回應。";
         try {
-            const res = await apiFetch('/api/debate-message', {
+            const res = await apiFetch('/api/assistant-brief', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ market: currentMarket, message: userText })
             });
             const data = await res.json();
-            if (data.replies && data.replies.chair) {
-                replyText = data.replies.chair;
+            if (res.ok && data.text) {
+                replyText = data.text;
             }
         } catch (e) {
             console.error("Chat assistant error:", e);

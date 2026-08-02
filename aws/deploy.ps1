@@ -1,6 +1,5 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)] [string] $AnthropicSecretArn,
     [string] $StackName = 'ai-investment-committee',
     [string] $Region = 'us-west-2'
 )
@@ -13,7 +12,7 @@ $webDirectory = Join-Path $projectDirectory 'web'
 
 Push-Location $scriptDirectory
 sam build --template-file $templatePath
-sam deploy --stack-name $StackName --region $Region --capabilities CAPABILITY_IAM --resolve-s3 --no-confirm-changeset --no-fail-on-empty-changeset --parameter-overrides "AnthropicSecretArn=$AnthropicSecretArn"
+sam deploy --stack-name $StackName --region $Region --capabilities CAPABILITY_IAM --resolve-s3 --no-confirm-changeset --no-fail-on-empty-changeset
 Pop-Location
 $outputs = aws cloudformation describe-stacks --stack-name $StackName --region $Region --query 'Stacks[0].Outputs' --output json | ConvertFrom-Json
 $outputMap = @{}; $outputs | ForEach-Object { $outputMap[$_.OutputKey] = $_.OutputValue }

@@ -3,15 +3,14 @@ Transform: AWS::Serverless-2016-10-31
 Description: Read-only serverless deployment for the AI Investment Committee app.
 
 Parameters:
-  AnthropicSecretArn:
-    Type: String
-    Description: ARN of a Secrets Manager secret containing {"ANTHROPIC_API_KEY":"..."}.
   AllowedOrigin:
     Type: String
     Default: '*'
   DemoMode:
     Type: String
-    Default: 'true'
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Set to false to enable Bedrock tool use; true returns deterministic demo responses.
 
 Globals:
   Function:
@@ -21,7 +20,6 @@ Globals:
     Tracing: Active
     Environment:
       Variables:
-        ANTHROPIC_SECRET_ARN: !Ref AnthropicSecretArn
         ALLOWED_ORIGIN: !Ref AllowedOrigin
         # Nova 2 Lite in us-west-2 requires the US cross-region inference ID.
         BEDROCK_MODEL: us.amazon.nova-2-lite-v1:0
@@ -48,8 +46,6 @@ Resources:
             Effect: Allow
             Action: [bedrock:Converse, bedrock:InvokeModel]
             Resource: '*'
-        - AWSSecretsManagerGetSecretValuePolicy:
-            SecretArn: !Ref AnthropicSecretArn
         - DynamoDBCrudPolicy:
             TableName: !Ref CommunityMessages
       Events:
