@@ -305,7 +305,7 @@ def request_debate_reply(market, user_message, discussion_context=None):
     prompt = {"market": market.upper(), "participant_message": user_message,
               "discussion_context": discussion_context or [],
               "task": "Conduct one concise round of four-agent debate. Use public research tools only when useful. State evidence; do not repeat the participant's question or use generic filler.",
-              "output_contract": {"technical": "Traditional Chinese, 1-2 short sentences, at most 70 characters: observation and one response or objection", "risk": "Traditional Chinese, 1-2 short sentences, at most 70 characters: key downside or invalidation and one response or objection", "sentiment": "Traditional Chinese, 1-2 short sentences, at most 70 characters: sentiment/news uncertainty and one response or objection", "behavior": "Traditional Chinese, 1-2 short sentences, at most 70 characters: decision-discipline risk and one response or objection", "chair": "Traditional Chinese, at most 3 short sentences and 120 characters: conclusion, main evidence, and one key risk. End with one brief research-only note; no headings, cards, lists, or repeated disclaimer.", "final_action": "exactly BUY, SELL, or HOLD; research posture only"}}
+              "output_contract": {"technical": "Traditional Chinese, 2-3 concise sentences, at most 140 characters: state price/trend or indicator evidence, explain what it means, then address one objection", "risk": "Traditional Chinese, 2-3 concise sentences, at most 140 characters: state the key downside and invalidation condition, then address one objection", "sentiment": "Traditional Chinese, 2-3 concise sentences, at most 140 characters: distinguish verified news/crowd evidence from uncertainty, then address one objection", "behavior": "Traditional Chinese, 2-3 concise sentences, at most 140 characters: identify decision-discipline risk and a concrete rule, then address one objection", "chair": "Traditional Chinese, at most 4 concise sentences and 180 characters: conclusion, shared evidence, disagreement, and the next conditions to monitor. End with one brief research-only note; no headings, cards, lists, or repeated disclaimer.", "final_action": "exactly BUY, SELL, or HOLD; research posture only"}}
     messages = [{"role": "user", "content": [{"text": json.dumps(prompt, ensure_ascii=False)}]}]
     tool_calls = []
     client = boto3.client("bedrock-runtime")
@@ -313,7 +313,7 @@ def request_debate_reply(market, user_message, discussion_context=None):
         for _ in range(4):
             response = client.converse(
                 modelId=os.environ.get("BEDROCK_MODEL", "us.amazon.nova-2-lite-v1:0"), system=[{"text": system}], messages=messages,
-                inferenceConfig={"maxTokens": 600, "temperature": 0.25}, toolConfig={"tools": tool_specs, "toolChoice": {"auto": {}}},
+                inferenceConfig={"maxTokens": 850, "temperature": 0.25}, toolConfig={"tools": tool_specs, "toolChoice": {"auto": {}}},
             )
             assistant_message = response["output"]["message"]
             messages.append(assistant_message)
@@ -322,11 +322,11 @@ def request_debate_reply(market, user_message, discussion_context=None):
                 text = "".join(item.get("text", "") for item in assistant_message.get("content", []) if isinstance(item, dict))
                 result = json.loads(text.removeprefix("```json").removeprefix("```").removesuffix("```").strip())
                 replies = {
-                    "technical": re.sub(r"\s+", " ", str(result.get("technical", "")).strip())[:120],
-                    "risk": re.sub(r"\s+", " ", str(result.get("risk", "")).strip())[:120],
-                    "sentiment": re.sub(r"\s+", " ", str(result.get("sentiment", "")).strip())[:120],
-                    "behavior": re.sub(r"\s+", " ", str(result.get("behavior", "")).strip())[:120],
-                    "chair": re.sub(r"\s+", " ", str(result.get("chair", "")).strip())[:200],
+                    "technical": re.sub(r"\s+", " ", str(result.get("technical", "")).strip())[:180],
+                    "risk": re.sub(r"\s+", " ", str(result.get("risk", "")).strip())[:180],
+                    "sentiment": re.sub(r"\s+", " ", str(result.get("sentiment", "")).strip())[:180],
+                    "behavior": re.sub(r"\s+", " ", str(result.get("behavior", "")).strip())[:180],
+                    "chair": re.sub(r"\s+", " ", str(result.get("chair", "")).strip())[:240],
                     "final_action": str(result.get("final_action", "HOLD")).upper(),
                 }
                 if replies["final_action"] not in {"BUY", "SELL", "HOLD"}:
@@ -417,19 +417,19 @@ def demo_debate_reply(market, user_message, discussion_context=None):
         market_context = f"截至 {observed_at}，{market.upper()} 暫無即時報價"
     if is_risk_alert_message(user_message):
         return {
-            "technical": f"{market_context}。量能未確認前，價格變動不構成趨勢確認。",
-            "risk": "目前重點不是猜方向，而是確認波動是否收斂與失效條件。",
-            "sentiment": "恐慌會放大短線波動，不能單獨當成反轉訊號。",
-            "behavior": "焦慮時最容易改變計畫；先核對風險上限與原定條件。",
-            "chair": "量能、波動與失效條件未確認前，維持觀察。",
+            "technical": f"{market_context}。這是單一時間點的價格與 24 小時變動，尚不足以確認趨勢反轉；需再觀察後續 K 線是否延續，並由成交量配合。",
+            "risk": "風險升高時，先看波動是否持續擴大，而不是急著判斷高低點。若價格再創短線低點、量能卻沒有止穩，原本的反彈假設就應失效。",
+            "sentiment": "恐慌討論通常會放大短線波動，但它不是反轉證據。除非情緒回穩同時出現價格止跌與量能改善，否則只宜視為市場噪音。",
+            "behavior": "最容易出錯的是在焦慮中臨時改變部位與風險上限。先保留原定上限、等待可驗證條件，再決定是否調整，避免因單根 K 線追進或砍出。",
+            "chair": "目前的共同結論是：波動偏高，但趨勢是否止穩仍未被確認。持續追蹤價格結構、成交量與前低是否守住；條件未滿足前維持觀察。本內容僅供研究。",
             "final_action": "HOLD",
         }
     return {
-        "technical": f"{market_context}。趨勢與量能同步才算有效；請確認失效條件。",
-        "risk": "我不同意只看趨勢。量能不足或波動放大時訊號易失真，先列出失效條件。",
-        "sentiment": "我同意風險提醒。社群熱度可推升短線，但須和價格、成交量交叉確認。",
-        "behavior": "技術與情緒都不能取代計畫。若部位或風險上限未定，避免因 FOMO 加碼。",
-        "chair": "技術有條件成立，但風險與行為門檻未滿足；先確認量能及失效條件。",
+        "technical": f"{market_context}。24 小時變動反映短線動能，但單靠漲跌幅不能判定趨勢；需確認價格是否站穩關鍵區間，且成交量是否同步增加。",
+        "risk": "技術訊號必須有失效條件，否則容易把短線波動誤判為趨勢。若量能沒有跟上或價格跌回原區間，就應重新評估原先的方向假設。",
+        "sentiment": "社群熱度可以解釋短線資金關注，卻無法取代市場資料。只有當新聞、價格與成交量指向一致，情緒才可作為輔助訊號；三者分歧時應降低權重。",
+        "behavior": "即使技術與情緒偏正向，也不代表可以忽略既定紀律。先確認可承受損失、部位上限與觀察期限；條件不完整時，避免因 FOMO 臨時擴大曝險。",
+        "chair": "現階段有短線動能，但量能與關鍵價位尚待驗證；風險委員對失效條件的要求成立。後續只追蹤價格是否守住、量能是否放大及計畫是否符合風險上限。本內容僅供研究。",
         "final_action": "HOLD",
     }
 
@@ -448,17 +448,17 @@ def build_two_stage_debates(replies):
         for agent, icon, name, color, key in agents
     ]
     phase_two_text = {
-        "tech": "回應風險提醒：量能若未跟上，價格變動只能視為短線波動。",
-        "risk": "反駁技術觀點：趨勢成立前，仍須先確認失效條件與可承受波動。",
-        "sent": "補充：社群熱度可能放大走勢，也可能放大追高，不能單獨作結論。",
-        "behav": "提醒：論點仍有分歧時，先維持既定規則，不因單一訊息改變計畫。",
+        "tech": "回應風險提醒：我同意沒有量能的走勢不夠可靠，因此只把價格延續、成交量增加與關鍵價位守住同時出現，視為較完整的確認。",
+        "risk": "反駁技術觀點：即使價格暫時守住，波動放大仍可能讓訊號失真。必須先定義跌回原區間或跌破前低時的失效條件，才能評估風險。",
+        "sent": "補充：社群熱度既可能帶來資金關注，也可能放大追高與恐慌。情緒只能與價格、成交量一致時提高參考權重，不能單獨推導結論。",
+        "behav": "提醒：委員間仍有分歧時，最重要的是不臨時改寫規則。應先維持部位與風險上限，等可驗證的價格與量能條件出現再重新檢查。",
     }
     phase_two = [
         {"agent": agent, "icon": icon, "name": name, "color": color, "phase": 2, "text": phase_two_text[agent]}
         for agent, icon, name, color, _key in agents[:2]
     ]
     phase_two.append({"agent": "moderator", "icon": "⚖️", "name": "主席", "color": "#ffd700", "phase": 2,
-                      "text": "目前共識是資料仍需交叉確認；請只保留可驗證的條件。"})
+                      "text": "目前共識是資料尚需交叉確認：技術面要有量能佐證，風險面要先定義失效條件。請以可驗證的價格、量能與風險上限作為後續判斷依據。"})
     phase_two.extend(
         {"agent": agent, "icon": icon, "name": name, "color": color, "phase": 2, "text": phase_two_text[agent]}
         for agent, icon, name, color, _key in agents[2:]
