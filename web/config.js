@@ -1,2 +1,1 @@
-// Local development uses the same origin. The AWS deployment script replaces this in S3.
-window.APP_CONFIG = Object.freeze({ apiBaseUrl: '' });
+window.APP_CONFIG = Object.freeze({ apiBaseUrl: 'https://mrfr4nlyfb.execute-api.us-west-2.amazonaws.com' });
