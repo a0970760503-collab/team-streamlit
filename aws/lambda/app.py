@@ -407,16 +407,15 @@ def demo_debate_reply(market, user_message, discussion_context=None):
     """Safe, deterministic fallback for classroom demonstrations without an AI credit balance."""
     ticker = fetch_ticker(market)
     if ticker.get("dataSource") == "live" and ticker.get("price") is not None:
-        market_context = f"The public quote is {ticker['price']:,} with a 24-hour change of {ticker.get('change24h', 0):+.2f}%"
+        market_context = f"{market.upper()} {ticker['price']:,.2f}，24 小時 {ticker.get('change24h', 0):+.2f}%"
     else:
-        market_context = "A verified live quote is unavailable, so no price conclusion is made"
-    topic = re.sub(r"\s+", " ", user_message).strip()[:160]
+        market_context = f"{market.upper()} 暫無即時報價"
     return {
-        "technical": f"【展示辯論】技術 Agent：{market.upper()} 的公開資料為 {market_context}。我主張先以趨勢與量能是否同步確認作為研究條件；回應風險 Agent 的疑慮，若量能不足，即使價格波動也不應視為有效訊號。",
-        "risk": f"【展示辯論】風險 Agent：針對「{topic}」，我不同意只憑技術變化形成結論。技術 Agent 的趨勢判讀仍須搭配失效條件、波動與流動性檢查，否則下行風險無法量化。",
-        "sentiment": "【展示辯論】市場情緒 Agent：短線新聞與社群熱度可能放大既有觀點，不能替代可驗證資料。我支持風險 Agent 對不確定性的提醒，並要求確認消息來源與市場反應是否一致。",
-        "behavior": "【展示辯論】行為觀察 Agent：四方資料即使一致，也應避免把它轉成衝動行動。我認同技術與風險的條件式做法；在 FOMO 或損失趨避出現時，應回到事先寫下的研究與風險規則。",
-        "chair": "【主席統整】四位委員一致認為，公開報價只能反映當下片段，仍須以趨勢、成交量與風險界線交叉確認；目前最大的分歧在於短線情緒是否能延續，因此不宜把單一訊號視為結論。後續可先核對公開報價與成交量、寫下研究假設的失效條件，並在波動擴大時保留觀察時間。\n\n【研究策略卡】\n買入觀察條件：趨勢、量能與風險界線同時獲得公開資料確認。\n賣出／避險觀察條件：原先研究假設失效，或波動與流動性風險顯著升高。\n維持觀察條件：訊號互相矛盾、資料不足或情緒過熱。\n本輪偏向：觀察。\n內容僅供教育研究，不構成投資建議。",
+        "technical": f"技術：{market_context}。趨勢與量能同步才算有效；請風險委員確認失效條件。",
+        "risk": "風險：我不同意只看趨勢。量能不足或波動放大時訊號易失真，先列出失效條件。",
+        "sentiment": "情緒：我同意風險委員。社群熱度可推升短線，但須和價格、成交量交叉確認。",
+        "behavior": "行為：技術與情緒都不能取代計畫。若部位或風險上限未定，避免因 FOMO 加碼。",
+        "chair": "主席：技術有條件成立，但風險與行為門檻未滿足。結論為觀察；先確認量能及失效條件。",
         "final_action": "HOLD",
     }
 
