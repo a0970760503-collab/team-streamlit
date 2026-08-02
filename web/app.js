@@ -613,6 +613,26 @@ async function renderChairDecision(data) {
     updateUIWithData(globalData);
 }
 
+async function renderTwoStageDebate(data) {
+    const debates = Array.isArray(data?.debates) ? data.debates : [];
+    const phaseOne = debates.filter(reply => reply.phase === 1);
+    const phaseTwo = debates.filter(reply => reply.phase === 2);
+    if (phaseOne.length !== 4 || phaseTwo.length < 5) {
+        throw new Error('委員會兩階段討論內容不完整。');
+    }
+    await renderChatMessage({ type: 'sys', text: '第一階段：四位委員分別陳述可觀察的資料。' });
+    for (const reply of phaseOne) {
+        debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
+        await renderChatMessage(reply);
+    }
+    await renderChatMessage({ type: 'sys', text: '第二階段：委員交叉討論，主席協調分歧。' });
+    for (const reply of phaseTwo) {
+        debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
+        await renderChatMessage(reply);
+    }
+    await renderChairDecision(data);
+}
+
 async function startAiDebate(initialUserText = null) {
     nav('page1');
     document.getElementById('tab-btn-debate').style.display = 'block';
@@ -640,14 +660,8 @@ async function startAiDebate(initialUserText = null) {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'AI 委員會暫時無法回應。');
-        const replies = Array.isArray(data.debates) ? data.debates.filter(reply => reply.agent !== 'chair') : [];
-        if (replies.length !== 4) throw new Error('四位委員的辯論內容不完整。');
         await renderToolUseStatus(data.toolCalls);
-        for (const reply of replies) {
-            debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
-            await renderChatMessage(reply);
-        }
-        await renderChairDecision(data);
+        await renderTwoStageDebate(data);
     } catch (error) {
         await renderChatMessage({ type: 'sys', text: `AI 委員會暫時無法回應：${error.message}。你仍可結束本次討論，系統會標示為未完成的研究紀錄。` });
     } finally {
@@ -741,11 +755,7 @@ async function sendDebateMsg() {
 
         if (resData && resData.debates) {
             await renderToolUseStatus(resData.toolCalls);
-            for (let reply of resData.debates.filter(reply => reply.agent !== 'chair')) {
-                debateHistory.push({ name: reply.name, text: reply.text, role: "agent" });
-                await renderChatMessage(reply);
-            }
-            await renderChairDecision(resData);
+            await renderTwoStageDebate(resData);
         }
     } catch (e) {
         console.error("Chat Debate Error:", e);

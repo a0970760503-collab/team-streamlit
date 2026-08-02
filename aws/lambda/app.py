@@ -434,6 +434,40 @@ def demo_debate_reply(market, user_message, discussion_context=None):
     }
 
 
+def build_two_stage_debates(replies):
+    """Turn a committee response into a visible two-stage discussion."""
+    agents = (
+        ("tech", "📈", "技術委員", "var(--primary)", "technical"),
+        ("risk", "🛡️", "風險委員", "var(--warning)", "risk"),
+        ("sent", "📰", "情緒委員", "var(--success)", "sentiment"),
+        ("behav", "🧠", "行為委員", "var(--secondary)", "behavior"),
+    )
+    phase_one = [
+        {"agent": agent, "icon": icon, "name": name, "color": color, "phase": 1,
+         "text": str(replies.get(key, "資料暫時不足，保留觀察。")).strip()[:180]}
+        for agent, icon, name, color, key in agents
+    ]
+    phase_two_text = {
+        "tech": "回應風險提醒：量能若未跟上，價格變動只能視為短線波動。",
+        "risk": "反駁技術觀點：趨勢成立前，仍須先確認失效條件與可承受波動。",
+        "sent": "補充：社群熱度可能放大走勢，也可能放大追高，不能單獨作結論。",
+        "behav": "提醒：論點仍有分歧時，先維持既定規則，不因單一訊息改變計畫。",
+    }
+    phase_two = [
+        {"agent": agent, "icon": icon, "name": name, "color": color, "phase": 2, "text": phase_two_text[agent]}
+        for agent, icon, name, color, _key in agents[:2]
+    ]
+    phase_two.append({"agent": "moderator", "icon": "⚖️", "name": "主席", "color": "#ffd700", "phase": 2,
+                      "text": "目前共識是資料仍需交叉確認；請只保留可驗證的條件。"})
+    phase_two.extend(
+        {"agent": agent, "icon": icon, "name": name, "color": color, "phase": 2, "text": phase_two_text[agent]}
+        for agent, icon, name, color, _key in agents[2:]
+    )
+    final = {"agent": "chair", "icon": "👑", "name": "主席統整", "color": "#ffd700", "phase": 3,
+             "text": str(replies.get("chair", "資料不足，暫時維持觀察。")).strip()[:220]}
+    return phase_one + phase_two + [final]
+
+
 def demo_analysis(market, period, technical, news):
     """Return a clearly labelled analysis card when the external AI provider is unavailable."""
     trend = str(technical.get("trendBias", "neutral"))
@@ -546,7 +580,8 @@ def lambda_handler(event, _context):
                     replies, mode, tool_calls = demo_debate_reply(market, message, discussion_context), "demo", []
             # Keep the concise API used by the serverless UI and also provide the
             # debate schema expected by the latest repository interface.
-            debates = [
+            debates = build_two_stage_debates(replies)
+            legacy_debates = [
                 {"agent": "tech", "icon": "📈", "name": "技術 Agent", "color": "var(--primary)", "text": replies.get("technical", "")},
                 {"agent": "risk", "icon": "🛡️", "name": "風險 Agent", "color": "var(--warning)", "text": replies.get("risk", "")},
                 {"agent": "sent", "icon": "🌐", "name": "市場情緒 Agent", "color": "var(--success)", "text": replies.get("sentiment", "")},
