@@ -446,33 +446,39 @@
 
         /* Desktop dashboard: keep the mobile experience on narrow screens,
            but use the available workspace on laptops and desktops. */
-        @media (min-width: 901px) {
+        @media (min-width: 601px) and (hover: hover), (min-width: 901px) {
             body {
-                padding: 32px;
+                padding: 20px;
                 background:
                     radial-gradient(circle at 15% 10%, rgba(112, 0, 255, .2), transparent 30%),
                     radial-gradient(circle at 85% 90%, rgba(0, 240, 255, .12), transparent 28%),
                     #030303;
             }
             .phone-frame {
-                width: min(1280px, calc(100vw - 64px));
-                height: min(860px, calc(100vh - 64px));
+                width: min(1280px, calc(100vw - 40px));
+                height: min(860px, calc(100vh - 40px));
                 border-width: 2px;
                 border-radius: 24px;
                 box-shadow: 0 25px 70px rgba(0, 0, 0, .48), 0 0 42px rgba(112, 0, 255, .22);
             }
             #dashboard-home-view {
                 display: grid !important;
-                grid-template-columns: minmax(360px, .9fr) minmax(460px, 1.25fr);
+                grid-template-columns: minmax(230px, .9fr) minmax(280px, 1.25fr);
                 grid-template-rows: auto minmax(0, 1fr);
             }
             #dashboard-home-view > div:nth-child(2) {
                 grid-column: 1 / -1;
-                padding: 18px 24px !important;
+                padding: 14px 18px !important;
+                gap: 8px !important;
             }
             #dashboard-home-view > div:nth-child(2) .learn-nav-btn {
-                padding: 9px 14px;
-                font-size: 13px;
+                padding: 8px 10px;
+                font-size: 12px;
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            #dashboard-home-view > div:nth-child(2) input {
+                width: min(160px, 24vw) !important;
             }
             #market-list-container {
                 grid-column: 1;
