@@ -554,17 +554,6 @@ async function renderChatMessage(line) {
     await new Promise(r => setTimeout(r, 300));
 }
 
-async function renderToolUseStatus(toolCalls) {
-    if (!Array.isArray(toolCalls) || !toolCalls.length) return;
-    const labels = {
-        get_max_ticker: 'MAX 即時報價',
-        get_technical_snapshot: 'K 線技術摘要',
-        get_crypto_news: '加密快訊'
-    };
-    const used = [...new Set(toolCalls)].map(name => labels[name] || name).join('、');
-    await renderChatMessage({ type: 'sys', text: `🧰 模式 B｜AI 委員會自主使用研究工具：${used}` });
-}
-
 function debateHistoryForApi() {
     return debateHistory.slice(-8).map(item => ({
         name: String(item.name || '委員').slice(0, 40),
@@ -620,12 +609,10 @@ async function renderTwoStageDebate(data) {
     if (phaseOne.length !== 4 || phaseTwo.length < 5) {
         throw new Error('委員會兩階段討論內容不完整。');
     }
-    await renderChatMessage({ type: 'sys', text: '第一階段：四位委員分別陳述可觀察的資料。' });
     for (const reply of phaseOne) {
         debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
         await renderChatMessage(reply);
     }
-    await renderChatMessage({ type: 'sys', text: '第二階段：委員交叉討論，主席協調分歧。' });
     for (const reply of phaseTwo) {
         debateHistory.push({ name: reply.name, text: reply.text, role: 'agent' });
         await renderChatMessage(reply);
@@ -641,7 +628,7 @@ async function startAiDebate(initialUserText = null) {
     const actions = document.getElementById('decision-btn-area');
     if (!chatBox || !actions) return;
     const systemNotice = document.getElementById('debate-sys-msg');
-    if (systemNotice) systemNotice.innerHTML = '<span>🧰 模式 B：AI 委員會可自主呼叫公開研究工具</span>';
+    if (systemNotice) systemNotice.style.display = 'none';
     chatBox.replaceChildren();
     actions.style.display = 'none';
     debateFinished = false;
@@ -660,7 +647,6 @@ async function startAiDebate(initialUserText = null) {
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'AI 委員會暫時無法回應。');
-        await renderToolUseStatus(data.toolCalls);
         await renderTwoStageDebate(data);
     } catch (error) {
         await renderChatMessage({ type: 'sys', text: `AI 委員會暫時無法回應：${error.message}。你仍可結束本次討論，系統會標示為未完成的研究紀錄。` });
@@ -754,7 +740,6 @@ async function sendDebateMsg() {
         const resData = await response.json();
 
         if (resData && resData.debates) {
-            await renderToolUseStatus(resData.toolCalls);
             await renderTwoStageDebate(resData);
         }
     } catch (e) {
