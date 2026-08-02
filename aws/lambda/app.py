@@ -403,13 +403,27 @@ def profile_viper_fallback(profile):
     }
 
 
+def is_risk_alert_message(message):
+    return bool(re.search(r"風險很大|現在風險|風險高|很危險|恐慌|爆倉|會跌", str(message or ""), re.IGNORECASE))
+
+
 def demo_debate_reply(market, user_message, discussion_context=None):
     """Safe, deterministic fallback for classroom demonstrations without an AI credit balance."""
     ticker = fetch_ticker(market)
+    observed_at = datetime.now(timezone.utc).strftime("%H:%M UTC")
     if ticker.get("dataSource") == "live" and ticker.get("price") is not None:
-        market_context = f"{market.upper()} {ticker['price']:,.2f}，24 小時 {ticker.get('change24h', 0):+.2f}%"
+        market_context = f"截至 {observed_at}，{market.upper()} {ticker['price']:,.2f}，24 小時 {ticker.get('change24h', 0):+.2f}%"
     else:
-        market_context = f"{market.upper()} 暫無即時報價"
+        market_context = f"截至 {observed_at}，{market.upper()} 暫無即時報價"
+    if is_risk_alert_message(user_message):
+        return {
+            "technical": f"技術：{market_context}。同意風險提醒；量能未確認前，價格變動不構成趨勢確認。",
+            "risk": "風險：目前重點不是猜方向，而是確認波動是否收斂與失效條件。",
+            "sentiment": "情緒：恐慌會放大短線波動，不能單獨當成反轉訊號。",
+            "behavior": "行為：焦慮時最容易改變計畫；先核對風險上限與原定條件。",
+            "chair": "主席：啟動高風險劇本。量能、波動與失效條件未確認前，維持觀察。",
+            "final_action": "HOLD",
+        }
     return {
         "technical": f"技術：{market_context}。趨勢與量能同步才算有效；請風險委員確認失效條件。",
         "risk": "風險：我不同意只看趨勢。量能不足或波動放大時訊號易失真，先列出失效條件。",
@@ -522,7 +536,7 @@ def lambda_handler(event, _context):
                 content = str(item.get("text", "")).strip()[:500]
                 if content:
                     discussion_context.append({"speaker": speaker or "委員", "content": content})
-            if demo_mode_enabled():
+            if demo_mode_enabled() or is_risk_alert_message(message):
                 replies, mode, tool_calls = demo_debate_reply(market, message, discussion_context), "demo", []
             else:
                 try:
